@@ -1,18 +1,20 @@
 # KPL SAB 赛制 / KPL SAB League Format
 
-《Teamfight Manager 2》的 KPL（王者荣耀职业联赛）mod，包含两个包：
+《Teamfight Manager 2》的 KPL（王者荣耀职业联赛）mod，包含三个包：
 
 | 包 | 类型 | 内容 |
 | --- | --- | --- |
-| `kpl_sab` | 原生 DLL（stable mod SDK） | S/A/B 分组赛制、每轮清零重分组、统一双败季后赛、最终名次与新闻、国际杯席位修正 |
+| `kpl_sab` | 原生 DLL（stable mod SDK） | S/A/B 分组赛制、每轮清零重分组、统一双败季后赛、最终名次与新闻、国际杯席位修正；中国赛区统一 KPL 风格中文名（持续查重） |
 | `kpl_real` | 数据包 | 中国赛区 → KPL 18 支真队 + K 甲；其他赛区 → 真实 LoL 战队；队徽、中文 UI |
+| `kpl_scout` | 原生 DLL（stable mod SDK） | 替代失效的 Chief Scout：底部栏「Chief Scout」按钮 + 找球员面板（分路评分、潜力/年龄/升级筛选、Solo Rank 资料卡含英雄头像） |
 
-两个包建议同时启用。只装 `kpl_real` 是换皮；只装 `kpl_sab` 会得到 KPL 赛制但队名仍是原版。
+`kpl_sab` 与 `kpl_real` 建议同时启用。只装 `kpl_real` 是换皮；只装 `kpl_sab` 会得到 KPL 赛制但队名仍是原版。`kpl_scout` 可单独使用。
 
 ## Steam 创意工坊
 
 - KPL SAB 赛制（原生 mod）：https://steamcommunity.com/sharedfiles/filedetails/?id=3822163110
 - KPL + Real LoL Teams（数据包）：https://steamcommunity.com/sharedfiles/filedetails/?id=3822160023
+- Chief Scout 找球员（原生 mod）：https://steamcommunity.com/sharedfiles/filedetails/?id=3822204418
 
 ## 赛制
 
@@ -40,7 +42,8 @@ Steam 创意工坊订阅后由游戏自动安装。手动安装：
 Teamfight Manager 2/
 └── mod-sdk-stable/
     ├── mod-api-stable/     <- 游戏自带
-    └── kpl_sab/            <- 本仓库的 kpl_sab 目录放到这里
+    ├── kpl_sab/            <- 本仓库的 kpl_sab 目录放到这里
+    └── kpl_scout/          <- kpl_scout 同理
 ```
 
 ```sh

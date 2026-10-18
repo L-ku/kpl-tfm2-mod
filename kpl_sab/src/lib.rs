@@ -455,6 +455,245 @@ fn rename_bench(ctx: &mut StableServerCtx<'_>) {
     }
 }
 
+/// v4：中国赛区（region 1/5）里所有还没换成中文名的选手——K 甲、青训队、
+/// 没进 roster_for 名单的二队/挂名队，以及中国赛区的自由球员——统一改成
+/// KPL 风格中文名。只改 name，年龄和能力值完全不动。
+///
+/// 名字是人工挑的 KPL 风格 ID（不是随机拼字），按诗意/武侠/职业选手常见
+/// 风格分组；不足时才会复用名单外的现有名字。
+const CN_NAMES: &[&str] = &[
+    // 常见 KPL 风格 / 现有替补名池
+    "小义", "阿豆", "一晨", "北诗", "小新", "一曲", "梦客", "清枫", "蓝柚", "星宇",
+    "沉舟", "明澈", "初晨", "花海", "清欢", "云中", "阿改", "汐音", "白羽", "青雉",
+    "沐白", "苏烈", "长歌", "望月", "孤城", "南风", "北辰", "明眸", "赤霄", "流云",
+    "星野", "风起", "寒江", "白露", "惊鸿", "落霞", "逐月", "千寻", "云深", "长夜",
+    "青灯", "归鸿", "听风", "临渊", "白泽", "玄策", "墨白", "云鹤", "小北", "阿澈",
+    "星痕", "木子", "小满", "青岚", "山鬼", "折扇", "南栀", "北柠", "青梧", "秋笙",
+    "冬临", "春野", "夏至", "白芷", "朱砂", "青冥", "紫电", "惊蛰",
+    // 职业选手感
+    "一诺", "暖阳", "清融", "梦泪", "猫神", "飞牛", "老帅", "无痕", "阿泰", "伪装",
+    "兰息", "纵情", "爱思", "笑影", "啊泽", "子阳", "天赐",
+    // 诗意 / 自然
+    "月白", "星河", "云澈", "风隐", "雨墨", "雷泽", "光影", "梦岚", "夜北", "晨星",
+    "夕颜", "东篱", "西洲", "白鹿", "金戈", "木棉", "水镜", "火舞", "河图", "海晏",
+    "江离", "川野", "林深", "森屿", "石青", "岩松", "冰河", "雪见", "霜降", "露白",
+    "秋分", "初雪", "离歌", "安澜", "宁远", "远山", "高歌", "飞白", "翔空", "潜龙",
+    "渊明", "虎啸", "狼影", "鹰扬", "龙渊", "凤鸣", "麟角", "羽衣", "翼展", "刃心",
+    "剑影", "弓弦", "弦歌", "书白", "墨染", "画卷", "琴心", "棋魂", "酒仙", "茶烟",
+    "花间", "叶落", "尘白", "沙洲", "明镜", "暗影", "浊酒", "清酒", "长明", "初岚",
+    "秋白", "夏禾", "春水", "冬阳", "南星", "西风", "东君", "云舟", "星阑", "月蚀",
+    "霜华", "雪落", "雨眠", "风眠", "云眠", "星眠", "花眠", "竹影", "梅香", "兰亭",
+    "菊隐", "松间", "月下", "江畔", "山间", "云间", "水间", "林间", "石间", "溪云",
+    "溪风", "溪月", "溪桥", "溪谷", "青衫", "白衣", "素衣", "玄衣", "绛衣", "墨衣",
+    "青锋", "白刃", "玄铁", "赤焰", "紫焰", "金鳞", "银翼", "铜戈", "玉衡", "玉京",
+    "玉楼", "玉川", "玉山", "玉门", "玉关", "玉龙", "星辰", "星尘", "月光", "月影",
+    "日出", "日落", "云开", "云起", "云落", "风吟", "雨落", "雨霖", "雷鸣", "闪电",
+    "光年", "梦回", "梦境", "夜行", "夜色", "晨光", "晨雾", "夕阳", "夕照", "北风",
+    "东风", "青云", "青空", "青石", "白霜", "白夜", "白雪", "黑曜", "赤瞳", "紫瞳",
+    "金瞳", "木叶", "水月", "火影", "山岚", "河洛", "海潮", "江湖", "川流", "林海",
+    "森罗", "石破", "岩心", "冰封", "雪原", "霜寒", "露华", "秋月", "春雷", "夏雨",
+    "冬雪", "初阳", "末夏", "离火", "归云", "安歌", "宁川", "远航", "高远", "飞扬",
+    "翔宇", "潜行", "渊海", "虎牙", "狼牙", "鹰眼", "龙牙", "凤羽", "麟羽", "羽林",
+    "翼风", "刃影", "锋刃", "剑心", "刀锋", "弦月", "歌行", "舞月", "书行", "墨行",
+    "画影", "琴音", "棋局", "酒歌", "茶语", "花影", "叶影", "果心", "尘缘", "沙影",
+    "涯月", "明川", "暗川", "清川", "浊川", "重山", "轻舟", "疾风", "徐行", "静水",
+    "动雷", "守月", "攻玉", "念川", "忘川", "知秋", "行舟", "言川", "默然", "笑川",
+    "悲歌", "欢颜",
+    // 三字 ID
+    "玉麒麟", "云中鹤", "月中仙", "山中客", "海上花", "天涯客", "江湖客", "故人归",
+    "少年游", "长安客", "洛阳花", "听雨轩", "望江楼", "踏雪行", "逐月者", "摘星人",
+    "揽星河", "饮风尘", "醉清风", "笑红尘", "步青云", "渡星河", "观沧海", "问苍穹",
+    "斩长空", "破晓时", "归途远", "流光转", "浮生梦", "半盏茶", "一壶酒", "半卷书",
+    "三尺剑", "七弦琴", "九万里", "千山雪", "万重山",
+    // 单字 ID
+    "信", "涛", "涵", "泽", "煜", "焱", "淼", "磊", "骏", "逸", "骐", "骥", "熠",
+    "昊", "晟", "睿", "骁", "野", "默", "岚",
+    // 扩充池：中国赛区每赛季都会新生成选手，名字要留足余量（防止池子取空）。
+    "白虹", "紫陌", "丹青", "碧落", "苍穹", "九霄", "八荒", "四野", "孤舟", "寒霜",
+    "冷月", "残阳", "暮雪", "烟雨", "雾隐", "霜刃", "雪刃", "风刃", "雷刃", "月刃",
+    "星刃", "云刃", "墨刃", "银月", "金乌", "玉兔", "赤乌", "白驹", "青骢", "绝影",
+    "飞电", "追风", "逐日", "踏浪", "破浪", "问剑", "试剑", "藏剑", "出鞘", "归鞘",
+    "寒锋", "冷锋", "秋声", "春声", "夏声", "山月", "江月", "海月", "湖月", "竹月",
+    "梅月", "松月", "柳月", "枫月", "桐月", "荷月", "桂月", "桃月", "杏月", "听雨",
+    "听雪", "听海", "听松", "听潮", "观海", "观星", "观月", "望云", "望海", "望山",
+    "望川", "清风", "清潭", "清溪", "清源", "清野", "清秋", "清霜", "清影", "墨池",
+    "墨轩", "墨客", "墨言", "墨语", "书客", "书童", "书剑", "书语", "琴客", "琴语",
+    "琴川", "棋客", "棋语", "酒客", "茶客", "花客", "花仙", "花匠", "叶舟", "叶语",
+    "云客", "云生", "云舒", "云卷", "云台", "云阙", "云泽", "云海", "云岭", "云峰",
+    "云涛", "星客", "星语", "星穹", "星轨", "星海", "星洲", "星落", "星沉", "月客",
+    "月语", "月华", "月泉", "月台", "月阙", "月舟", "风客", "风语", "风谷", "风岭",
+    "风铃", "雨客", "雨声", "雨竹", "雨荷", "雨桐", "雷声", "雪客", "雪声", "雪松",
+    "雪梅", "雪竹", "霜客", "霜月", "秋客", "秋雨", "秋风", "秋叶", "秋山", "秋江",
+    "春山", "春江", "春雪", "夏风", "夏荷", "冬梅", "冬青", "冬至", "夏夜", "春夜",
+    "秋夜", "冬夜", "南山", "北山", "东林", "西林", "南江", "北江", "白鹤", "青鸾",
+    "朱雀", "玄武", "青龙", "白虎", "麒麟", "凤凰", "鲲鹏", "貔貅", "墨羽", "玄羽",
+    "青羽", "金羽", "银羽", "紫羽", "赤羽", "黑羽", "霜羽", "雪羽", "剑客", "刀客",
+    "弓客", "枪客", "拳客", "影客", "刃客", "弦客", "歌客", "舞客", "月神", "星神",
+    "风神", "雨神", "雷神", "雪神", "霜神", "云神", "山神", "海神", "云歌", "月歌",
+    "星歌", "风歌", "雨歌", "雪歌", "竹歌", "梅歌", "兰歌", "菊歌",
+];
+
+fn cn_name_pool() -> Vec<String> {
+    let mut v: Vec<String> = Vec::new();
+    let mut seen: HashSet<&str> = HashSet::new();
+    for n in CN_NAMES {
+        if seen.insert(n) {
+            v.push((*n).to_string());
+        }
+    }
+    v
+}
+
+/// 1.1.0 早期版本用「姓 + 名」随机拼出的名字（陈影、王电之类）。
+/// 这些名字已经在一些存档里了，再跑一遍时要把它们也换成新名字池。
+fn is_legacy_generated(name: &str) -> bool {
+    let mut it = name.chars();
+    let (Some(a), Some(b), None) = (it.next(), it.next(), it.next()) else {
+        return false;
+    };
+    const S: &str = "陈林王李张刘黄吴徐孙胡朱高罗郑梁谢宋唐许韩冯邓曹彭曾肖田董袁潘于蒋蔡余杜叶程苏魏";
+    const G: &str = "一三小子天月星云风雨雷电光影梦夜晨夕南北东西青白黑赤紫金木水火土山河海江川林森石岩冰雪霜露秋春夏冬初末离归安宁远高飞翔潜渊虎狼鹰龙凤麟羽翼刃锋剑刀弓弦歌舞书墨画琴棋酒茶花叶果尘沙涯角明暗清浊重轻疾徐静动守攻念忘知行言默笑哭悲欢";
+    S.contains(a) && G.contains(b)
+}
+
+/// 从 `soloranks` JSON 里取第一个 `region_id`（0 韩国 / 1 中国 / 2 欧洲 /
+/// 3 北美 / 4 南美 / 5 日本）。
+fn solo_region(j: &str) -> Option<i64> {
+    let pat = "\"region_id\":";
+    let i = j.find(pat)? + pat.len();
+    let rest = &j[i..];
+    let end = rest
+        .find(|c: char| c == ',' || c == '}' || c == ']')
+        .unwrap_or(rest.len());
+    rest[..end].trim().parse().ok()
+}
+
+/// League id -> region id.
+fn league_regions(ctx: &mut StableServerCtx<'_>) -> HashMap<usize, i64> {
+    let mut m = HashMap::new();
+    for lid in ctx.record_ids(RecordKindV1::League) {
+        if let Some(r) = ctx
+            .record_get_json(RecordKindV1::League, lid, "region_id")
+            .and_then(|s| s.parse::<i64>().ok())
+        {
+            m.insert(lid, r);
+        }
+    }
+    m
+}
+
+/// 中国赛区归属：`None` = 不是中国赛区；`Some("")` = 中国赛区的自由球员；
+/// `Some(队名)` = 中国赛区某支队伍的选手。region 1 = 中国，region 5 = 原日本
+/// 赛区（本 mod 里被改成了 B 组 / K 甲）。
+fn cn_team_of(
+    ctx: &mut StableServerCtx<'_>,
+    lg: &HashMap<usize, i64>,
+    id: usize,
+) -> Option<String> {
+    let tid = ctx
+        .record_get_json(RecordKindV1::Athlete, id, "contract.InContract.team_id")
+        .and_then(|s| s.parse::<usize>().ok());
+    match tid {
+        Some(tid) => {
+            let lid = ctx
+                .record_get_json(RecordKindV1::Team, tid, "league_id")
+                .and_then(|s| s.parse::<usize>().ok())?;
+            let &region = lg.get(&lid)?;
+            if region != 1 && region != 5 {
+                return None;
+            }
+            Some(
+                ctx.record_get_string(RecordKindV1::Team, tid, "name")
+                    .unwrap_or_default(),
+            )
+        }
+        // 自由球员没有球队，用 Solo Rank 所在赛区判断是不是中国赛区。
+        None => {
+            let ranks = ctx
+                .record_get_json(RecordKindV1::Athlete, id, "soloranks")
+                .unwrap_or_default();
+            if matches!(solo_region(&ranks), Some(1) | Some(5)) {
+                Some(String::new())
+            } else {
+                None
+            }
+        }
+    }
+}
+
+fn rename_cn_all(ctx: &mut StableServerCtx<'_>) {
+    // 每次开服 / 每个管理事件都跑一遍：新生成的选手也会被换成中文名。
+    // 顺带做一次全局查重：中国赛区里重名的选手，后出现的会改名，保证不重名。
+    // 已经是唯一中文名的会保持原样，所以重复执行是安全的。
+
+    let lg_region = league_regions(ctx);
+    let curated: HashSet<&str> = CN_NAMES.iter().copied().collect();
+
+    struct Row {
+        id: usize,
+        name: String,
+        prio: u8,
+    }
+
+    let mut ids: Vec<usize> = ctx.record_ids(RecordKindV1::Athlete);
+    ids.sort_unstable();
+
+    // 非中国赛区的名字直接占位，保证改出来的名字和他们不重。
+    let mut kept: HashSet<String> = HashSet::new();
+    let mut rows: Vec<Row> = Vec::new();
+
+    for id in ids {
+        let Some(name) = ctx.record_get_string(RecordKindV1::Athlete, id, "name") else {
+            continue;
+        };
+        let Some(team) = cn_team_of(ctx, &lg_region, id) else {
+            kept.insert(name);
+            continue;
+        };
+        // roster_for 里的真实 KPL 名字（如 "Ming" / "小A"）永远保留。
+        let real_roster = !team.is_empty() && roster_lane_of(&team, &name).is_some();
+        let english = name.chars().any(|c| c.is_ascii_alphabetic());
+        let legacy = !english && !curated.contains(name.as_str()) && is_legacy_generated(&name);
+        // 优先级：真实名单名 > 现成中文名 > 名字池里的名字 > 英文 / 旧随机名。
+        // 重名时优先级低的那个改名，真名永远保留。
+        let prio = if real_roster {
+            0
+        } else if english || legacy {
+            3
+        } else if curated.contains(name.as_str()) {
+            1
+        } else {
+            2
+        };
+        rows.push(Row { id, name, prio });
+    }
+
+    rows.sort_by(|a, b| (a.prio, a.id).cmp(&(b.prio, b.id)));
+
+    // 按优先级占名；需要改名的（英文 / 旧随机名）或重名的排队重新取名。
+    let mut to_rename: Vec<usize> = Vec::new();
+    for r in &rows {
+        if r.prio == 0 {
+            kept.insert(r.name.clone());
+        } else if r.prio >= 3 || kept.contains(&r.name) {
+            to_rename.push(r.id);
+        } else {
+            kept.insert(r.name.clone());
+        }
+    }
+
+    let mut pool = cn_name_pool()
+        .into_iter()
+        .filter(|n| !kept.contains(n))
+        .collect::<Vec<_>>()
+        .into_iter();
+    for id in to_rename {
+        let Some(next_name) = pool.next() else { break };
+        kept.insert(next_name.clone());
+        ctx.record_set_string(RecordKindV1::Athlete, id, "name", &next_name);
+    }
+}
+
 fn dump_athletes(ctx: &mut StableServerCtx<'_>) {
     let mut by_team: HashMap<String, Vec<String>> = HashMap::new();
     for id in ctx.record_ids(RecordKindV1::Athlete) {
@@ -5103,6 +5342,7 @@ impl StableServerExtension for KplNaming {
         rename_china(ctx);
         fix_roles(ctx);
         rename_bench(ctx);
+        rename_cn_all(ctx);
         dump_structure(ctx);
         dump_athletes(ctx);
         set_bo(ctx);
@@ -5158,6 +5398,7 @@ impl StableServerExtension for KplNaming {
                     rename_china(ctx);
                     fix_roles(ctx);
                     rename_bench(ctx);
+                    rename_cn_all(ctx);
                     maybe_sab_seed(ctx);
                     set_bo(ctx);
                     zero_ab_prizes(ctx);
@@ -5194,6 +5435,8 @@ impl StableServerExtension for KplNaming {
                 }
                 _ => {}
             }
+            // 新生成的选手（转会、青训、赛季刷新）也统一成 KPL 中文名。
+            rename_cn_all(ctx);
         }
         CURSOR.store(nc, Ordering::SeqCst);
     }
