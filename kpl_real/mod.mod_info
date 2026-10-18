@@ -1,8 +1,8 @@
 {
   "name": "KPL + Real LoL Teams",
   "author": "L-ku",
-  "version": "1.1.0",
-  "description": "中国赛区换成 KPL 18 支真队 + K 甲队伍（队名、选手、队徽、中文 UI）；其他赛区换成真实 LoL 战队。1.1.0 起开档选队列表按战队真实实力排序（六个真队在前、挂名队在后），三个 KPL 联赛的默认显示名为「KPL 一组/二组/三组」。配合 KPL SAB 赛制 mod 使用。\n\nCN region -> 18 real KPL teams + K甲; other regions -> real LoL teams; custom team logos and Chinese UI text. As of 1.1.0 the team-select list is ordered by real team strength (six real teams first, filler teams after), and the three KPL leagues default to \"KPL Group 1/2/3\" in the UI. Use together with the KPL SAB League Format mod.",
+  "version": "1.2.0",
+  "description": "中国赛区换成 KPL 18 支真队 + K 甲队伍（队名、选手、队徽、中文 UI）；其他赛区换成真实 LoL 战队。1.1.0 起开档选队列表按战队真实实力排序（六个真队在前、挂名队在后），三个 KPL 联赛的默认显示名为「KPL 一组/二组/三组」。1.2.0 起 18 支 KPL 真队换成官方队徽重绘的 64×64 像素风版本（KLG、情久使用 K 甲官方队徽）。配合 KPL SAB 赛制 mod 使用。\n\nCN region -> 18 real KPL teams + K甲; other regions -> real LoL teams; custom team logos and Chinese UI text. As of 1.1.0 the team-select list is ordered by real team strength (six real teams first, filler teams after), and the three KPL leagues default to \"KPL Group 1/2/3\" in the UI. As of 1.2.0 all 18 real KPL teams use 64x64 pixel-art redraws of their official crests (KLG and QingJiu use their official KGL crests). Use together with the KPL SAB League Format mod.",
   "last_updated": "2026-10-18",
   "dependencies": [
     {
