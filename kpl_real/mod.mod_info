@@ -1,0 +1,13 @@
+{
+  "name": "KPL + Real LoL Teams",
+  "author": "L-ku",
+  "version": "1.0.0",
+  "description": "中国赛区换成 KPL 18 支真队 + K 甲队伍（队名、选手、队徽、中文 UI）；其他赛区换成真实 LoL 战队。配合 KPL SAB 赛制 mod 使用。\n\nCN region -> 18 real KPL teams + K甲; other regions -> real LoL teams; custom team logos and Chinese UI text. Use together with the KPL SAB League Format mod.",
+  "last_updated": "2026-10-18",
+  "dependencies": [
+    {
+      "mod_id": "base",
+      "version": ">=0.1.0"
+    }
+  ]
+}

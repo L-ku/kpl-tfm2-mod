@@ -1,0 +1,80 @@
+{
+  "en": {
+    "league": {
+      "tacc": "KPL S",
+      "tacc2": "KPL A",
+      "tacj": "KPL B",
+      "tacj2": "KGL"
+    },
+    "competition_name": {
+      "league": "{League} League",
+      "league_spring": "{League} Spring Split",
+      "league_summer": "{League} Summer Split",
+      "league_spring_playoff": "KPL Playoffs",
+      "promotion_relegation_series": "{League} Promotion/Relegation Series",
+      "league_summer_playoff": "KPL Playoffs",
+      "group": "{Tournament} Group Stage",
+      "knockout": "{Tournament} Knockout Stage"
+    },
+    "region": [
+      "Korea",
+      "CN1",
+      "Europe",
+      "North America",
+      "South America",
+      "CN2"
+    ]
+  },
+  "zh-hans": {
+    "league": {
+      "tacc": "KPL S组",
+      "tacc2": "KPL A组",
+      "tacj": "KPL B组",
+      "tacj2": "K甲"
+    },
+    "competition_name": {
+      "league": "{League}联赛",
+      "league_spring": "{League}春季赛",
+      "league_summer": "{League}夏季赛",
+      "league_spring_playoff": "KPL 季后赛",
+      "promotion_relegation_series": "{League} 升降级赛",
+      "league_summer_playoff": "KPL 季后赛",
+      "group": "{Tournament}小组赛",
+      "knockout": "{Tournament}淘汰赛"
+    },
+    "region": [
+      "韩国",
+      "CN1",
+      "欧洲",
+      "北美",
+      "南美",
+      "CN2"
+    ]
+  },
+  "zh-hant": {
+    "league": {
+      "tacc": "KPL S組",
+      "tacc2": "KPL A組",
+      "tacj": "KPL B組",
+      "tacj2": "K甲"
+    },
+    "competition_name": {
+      "league": "{League}聯賽",
+      "league_spring": "{League}春季賽",
+      "league_summer": "{League}夏季賽",
+      "league_spring_playoff": "KPL 季後賽",
+      "promotion_relegation_series": "{League} 升降級賽",
+      "league_summer_playoff": "KPL 季後賽",
+      "group": "{Tournament}小組賽",
+      "knockout": "{Tournament}淘汰賽"
+    },
+    "region": [
+      "韓國",
+      "CN1",
+      "歐洲",
+      "北美",
+      "南美",
+      "CN2"
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "KPL SAB 赛制 / KPL SAB League Format",
+  "author": "L-ku",
+  "version": "1.0.0",
+  "mod_type": "native",
+  "contains_code": true,
+  "description": "把中国赛区改成 KPL 的 S/A/B 分组赛制：每轮积分清零并按名次重新分组、S/A/B 各 3 个单循环（45 场）、赛季末统一 12 队双败 BO7 季后赛（16 场）+ 7-10 名排位赛、推送官方最终名次与对阵新闻、修正国际杯抽签里的挂名队和不重复席位。建议与 KPL + Real LoL Teams 数据包一起使用。\n\nKPL (King Pro League) S/A/B format for the CN region: per-round standings reset and regrouping, three single round-robins per group (45 matches), a unified 12-team double-elimination BO7 playoff with 7-10 placement matches, official final-rank news, and international-cup seat fixes. Best used together with the KPL + Real LoL Teams data mod.",
+  "last_updated": "2026-10-18",
+  "dependencies": [
+    {
+      "mod_id": "base",
+      "version": ">=0.6.0"
+    }
+  ]
+}

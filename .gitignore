@@ -1,0 +1,7 @@
+/kpl_sab/target/
+/kpl_sab/mod.workshop_id
+/kpl_sab/mod-api-stable/
+*.dll
+*.so
+*.dylib
+mod.workshop_id

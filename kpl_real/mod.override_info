@@ -1,0 +1,18 @@
+{
+  "asset/base/setting/data_setting": {
+    "remapping": "asset/kpl_real/setting/data_setting",
+    "type": "override"
+  },
+  "asset/base/text/ui": {
+    "remapping": "asset/kpl_real/text/ui",
+    "type": "merge"
+  },
+  "asset/base/aseprite_resources/team_logo#sheet": {
+    "remapping": "asset/kpl_real/aseprite_resources/team_logo#sheet",
+    "type": "override"
+  },
+  "asset/base/aseprite_resources/team_logo#data": {
+    "remapping": "asset/kpl_real/aseprite_resources/team_logo#data",
+    "type": "override"
+  }
+}

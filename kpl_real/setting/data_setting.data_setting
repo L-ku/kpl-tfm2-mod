@@ -1,0 +1,4586 @@
+{
+ "leagues": [
+  {
+   "name": "TACK",
+   "full_name": "#asset/base/text/ui?league.tack",
+   "teams": [
+    {
+     "name": "T1",
+     "logo": "t0",
+     "money": 200,
+     "money_max": 300,
+     "popularity_level": 4,
+     "popularity_max_level": 4,
+     "team_level": 7,
+     "staff": {
+      "cnt": 4,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 1,
+      "salary_max": 3,
+      "stat_min": 75,
+      "stat_max": 90
+     },
+     "stadium_name": "Thunderbolt Arena"
+    },
+    {
+     "name": "Gen.G",
+     "logo": "t1",
+     "money": 190,
+     "money_max": 285,
+     "popularity_level": 4,
+     "popularity_max_level": 4,
+     "team_level": 7,
+     "staff": {
+      "cnt": 4,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.9,
+      "salary_max": 2.8,
+      "stat_min": 70,
+      "stat_max": 85
+     },
+     "stadium_name": "Nexus Arena"
+    },
+    {
+     "name": "Hanwha Life Esports",
+     "logo": "t2",
+     "money": 180,
+     "money_max": 270,
+     "popularity_level": 3,
+     "popularity_max_level": 4,
+     "team_level": 6,
+     "staff": {
+      "cnt": 4,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.8,
+      "salary_max": 2.5,
+      "stat_min": 65,
+      "stat_max": 80
+     },
+     "stadium_name": "Tiger Dome"
+    },
+    {
+     "name": "Dplus KIA",
+     "logo": "t3",
+     "money": 170,
+     "money_max": 255,
+     "popularity_level": 3,
+     "popularity_max_level": 4,
+     "team_level": 6,
+     "staff": {
+      "cnt": 4,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.7,
+      "salary_max": 2.2,
+      "stat_min": 62,
+      "stat_max": 77
+     },
+     "stadium_name": "Grid Center"
+    },
+    {
+     "name": "KT Rolster",
+     "logo": "t4",
+     "money": 160,
+     "money_max": 240,
+     "popularity_level": 3,
+     "popularity_max_level": 3,
+     "team_level": 6,
+     "staff": {
+      "cnt": 3,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.6,
+      "salary_max": 1.8,
+      "stat_min": 60,
+      "stat_max": 75
+     },
+     "stadium_name": "Blue Moon Arena"
+    },
+    {
+     "name": "BNK FearX",
+     "logo": "t5",
+     "money": 140,
+     "money_max": 210,
+     "popularity_level": 2,
+     "popularity_max_level": 3,
+     "team_level": 5,
+     "staff": {
+      "cnt": 3,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.5,
+      "salary_max": 1.5,
+      "stat_min": 55,
+      "stat_max": 70
+     },
+     "stadium_name": "Vanguard Hall"
+    },
+    {
+     "name": "Nongshim RedForce",
+     "logo": "t6",
+     "money": 130,
+     "money_max": 195,
+     "popularity_level": 2,
+     "popularity_max_level": 3,
+     "team_level": 5,
+     "staff": {
+      "cnt": 3,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.4,
+      "salary_max": 1.2,
+      "stat_min": 50,
+      "stat_max": 65
+     },
+     "stadium_name": "Shadow Arena"
+    },
+    {
+     "name": "Kwangdong Freecs",
+     "logo": "t7",
+     "money": 120,
+     "money_max": 180,
+     "popularity_level": 2,
+     "popularity_max_level": 2,
+     "team_level": 5,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.9,
+      "stat_min": 45,
+      "stat_max": 60
+     },
+     "stadium_name": "Bastion Center"
+    },
+    {
+     "name": "DRX",
+     "logo": "t8",
+     "money": 100,
+     "money_max": 150,
+     "popularity_level": 1,
+     "popularity_max_level": 2,
+     "team_level": 4,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.7,
+      "stat_min": 40,
+      "stat_max": 55
+     },
+     "stadium_name": "Starlight Arena"
+    },
+    {
+     "name": "OKSavingsBank Brion",
+     "logo": "t9",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 1,
+     "popularity_max_level": 1,
+     "team_level": 4,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.5,
+      "stat_min": 25,
+      "stat_max": 40
+     },
+     "stadium_name": "Velocity Park"
+    }
+   ],
+   "region_id": 0,
+   "division": 0,
+   "prize_money": [
+    10,
+    5,
+    3,
+    1.5,
+    0.8
+   ]
+  },
+  {
+   "name": "TACC",
+   "full_name": "#asset/base/text/ui?league.tacc",
+   "teams": [
+    {
+     "name": "南通Hero久竞",
+     "logo": "t10",
+     "money": 140,
+     "money_max": 210,
+     "popularity_level": 3,
+     "popularity_max_level": 4,
+     "team_level": 5,
+     "staff": {
+      "cnt": 4,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.95,
+      "salary_max": 2.9,
+      "stat_min": 72,
+      "stat_max": 88
+     },
+     "stadium_name": "Dragon Arena"
+    },
+    {
+     "name": "北京JDG",
+     "logo": "t11",
+     "money": 116,
+     "money_max": 174,
+     "popularity_level": 2,
+     "popularity_max_level": 4,
+     "team_level": 5,
+     "staff": {
+      "cnt": 4,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.85,
+      "salary_max": 2.6,
+      "stat_min": 70,
+      "stat_max": 85
+     },
+     "stadium_name": "Royal Palace Arena"
+    },
+    {
+     "name": "深圳DYG",
+     "logo": "t12",
+     "money": 132,
+     "money_max": 198,
+     "popularity_level": 2,
+     "popularity_max_level": 4,
+     "team_level": 5,
+     "staff": {
+      "cnt": 4,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.8,
+      "salary_max": 2.5,
+      "stat_min": 65,
+      "stat_max": 80
+     },
+     "stadium_name": "Sentinel Arena"
+    },
+    {
+     "name": "长沙TES.A",
+     "logo": "t13",
+     "money": 86,
+     "money_max": 129,
+     "popularity_level": 1,
+     "popularity_max_level": 4,
+     "team_level": 4,
+     "staff": {
+      "cnt": 4,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.7,
+      "salary_max": 2.2,
+      "stat_min": 62,
+      "stat_max": 77
+     },
+     "stadium_name": "Crimson Center"
+    },
+    {
+     "name": "苏州KSG",
+     "logo": "t14",
+     "money": 164,
+     "money_max": 246,
+     "popularity_level": 3,
+     "popularity_max_level": 3,
+     "team_level": 6,
+     "staff": {
+      "cnt": 3,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.6,
+      "salary_max": 1.8,
+      "stat_min": 60,
+      "stat_max": 75
+     },
+     "stadium_name": "Flame Arena"
+    },
+    {
+     "name": "杭州LGD.NBW",
+     "logo": "t15",
+     "money": 124,
+     "money_max": 186,
+     "popularity_level": 2,
+     "popularity_max_level": 3,
+     "team_level": 5,
+     "staff": {
+      "cnt": 3,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.5,
+      "salary_max": 1.5,
+      "stat_min": 55,
+      "stat_max": 70
+     },
+     "stadium_name": "Summit Hall"
+    },
+    {
+     "name": "武汉GK",
+     "logo": "t16",
+     "money": 96,
+     "money_max": 144,
+     "popularity_level": 0,
+     "popularity_max_level": 3,
+     "team_level": 3,
+     "staff": {
+      "cnt": 3,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.4,
+      "salary_max": 1.2,
+      "stat_min": 50,
+      "stat_max": 65
+     },
+     "stadium_name": "Jade Garden Arena"
+    },
+    {
+     "name": "深圳TCG",
+     "logo": "t17",
+     "money": 98,
+     "money_max": 147,
+     "popularity_level": 1,
+     "popularity_max_level": 2,
+     "team_level": 4,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.9,
+      "stat_min": 45,
+      "stat_max": 60
+     },
+     "stadium_name": "Deepblue Arena"
+    },
+    {
+     "name": "杭州ZQ",
+     "logo": "t18",
+     "money": 92,
+     "money_max": 138,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 3,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.7,
+      "stat_min": 40,
+      "stat_max": 55
+     },
+     "stadium_name": "Thunder Dome"
+    },
+    {
+     "name": "上海DSM",
+     "logo": "t19",
+     "money": 94,
+     "money_max": 141,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 3,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.5,
+      "stat_min": 25,
+      "stat_max": 40
+     },
+     "stadium_name": "Cypher Arena"
+    }
+   ],
+   "region_id": 1,
+   "division": 0,
+   "prize_money": [
+    10,
+    5,
+    3,
+    1.5,
+    0.8
+   ]
+  },
+  {
+   "name": "TACE",
+   "full_name": "#asset/base/text/ui?league.tace",
+   "teams": [
+    {
+     "name": "G2 Esports",
+     "logo": "t20",
+     "money": 200,
+     "money_max": 300,
+     "popularity_level": 4,
+     "popularity_max_level": 4,
+     "team_level": 7,
+     "staff": {
+      "cnt": 4,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.95,
+      "salary_max": 2.9,
+      "stat_min": 72,
+      "stat_max": 88
+     },
+     "stadium_name": "Skyrise Arena"
+    },
+    {
+     "name": "Fnatic",
+     "logo": "t21",
+     "money": 190,
+     "money_max": 285,
+     "popularity_level": 4,
+     "popularity_max_level": 4,
+     "team_level": 7,
+     "staff": {
+      "cnt": 4,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.85,
+      "salary_max": 2.6,
+      "stat_min": 70,
+      "stat_max": 85
+     },
+     "stadium_name": "Frostbite Arena"
+    },
+    {
+     "name": "Karmine Corp",
+     "logo": "t22",
+     "money": 180,
+     "money_max": 270,
+     "popularity_level": 3,
+     "popularity_max_level": 4,
+     "team_level": 6,
+     "staff": {
+      "cnt": 4,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.8,
+      "salary_max": 2.5,
+      "stat_min": 65,
+      "stat_max": 80
+     },
+     "stadium_name": "Lions Den Arena"
+    },
+    {
+     "name": "MAD Lions KOI",
+     "logo": "t23",
+     "money": 170,
+     "money_max": 255,
+     "popularity_level": 3,
+     "popularity_max_level": 4,
+     "team_level": 6,
+     "staff": {
+      "cnt": 4,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.7,
+      "salary_max": 2.2,
+      "stat_min": 62,
+      "stat_max": 77
+     },
+     "stadium_name": "Helix Center"
+    },
+    {
+     "name": "Team Heretics",
+     "logo": "t24",
+     "money": 160,
+     "money_max": 240,
+     "popularity_level": 3,
+     "popularity_max_level": 3,
+     "team_level": 6,
+     "staff": {
+      "cnt": 3,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.6,
+      "salary_max": 1.8,
+      "stat_min": 60,
+      "stat_max": 75
+     },
+     "stadium_name": "Solaris Arena"
+    },
+    {
+     "name": "Team BDS",
+     "logo": "t25",
+     "money": 140,
+     "money_max": 210,
+     "popularity_level": 2,
+     "popularity_max_level": 3,
+     "team_level": 5,
+     "staff": {
+      "cnt": 3,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.5,
+      "salary_max": 1.5,
+      "stat_min": 55,
+      "stat_max": 70
+     },
+     "stadium_name": "Voltage Hall"
+    },
+    {
+     "name": "GIANTX",
+     "logo": "t26",
+     "money": 130,
+     "money_max": 195,
+     "popularity_level": 2,
+     "popularity_max_level": 3,
+     "team_level": 5,
+     "staff": {
+      "cnt": 3,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.4,
+      "salary_max": 1.2,
+      "stat_min": 50,
+      "stat_max": 65
+     },
+     "stadium_name": "Storm Point Arena"
+    },
+    {
+     "name": "SK Gaming",
+     "logo": "t27",
+     "money": 120,
+     "money_max": 180,
+     "popularity_level": 2,
+     "popularity_max_level": 2,
+     "team_level": 5,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.9,
+      "stat_min": 45,
+      "stat_max": 60
+     },
+     "stadium_name": "Horizon Arena"
+    },
+    {
+     "name": "Team Vitality",
+     "logo": "t28",
+     "money": 100,
+     "money_max": 150,
+     "popularity_level": 1,
+     "popularity_max_level": 2,
+     "team_level": 4,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.7,
+      "stat_min": 40,
+      "stat_max": 55
+     },
+     "stadium_name": "Dusk Arena"
+    },
+    {
+     "name": "Rogue",
+     "logo": "t29",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 1,
+     "popularity_max_level": 1,
+     "team_level": 4,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.5,
+      "stat_min": 25,
+      "stat_max": 40
+     },
+     "stadium_name": "Crystal Arena"
+    }
+   ],
+   "region_id": 2,
+   "division": 0,
+   "prize_money": [
+    10,
+    5,
+    3,
+    1.5,
+    0.8
+   ]
+  },
+  {
+   "name": "TACA",
+   "full_name": "#asset/base/text/ui?league.taca",
+   "teams": [
+    {
+     "name": "Cloud9",
+     "logo": "t30",
+     "money": 200,
+     "money_max": 300,
+     "popularity_level": 4,
+     "popularity_max_level": 4,
+     "team_level": 7,
+     "staff": {
+      "cnt": 4,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.95,
+      "salary_max": 2.9,
+      "stat_min": 72,
+      "stat_max": 88
+     },
+     "stadium_name": "Digital Arena"
+    },
+    {
+     "name": "Team Liquid",
+     "logo": "t31",
+     "money": 190,
+     "money_max": 285,
+     "popularity_level": 4,
+     "popularity_max_level": 4,
+     "team_level": 7,
+     "staff": {
+      "cnt": 4,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.85,
+      "salary_max": 2.6,
+      "stat_min": 70,
+      "stat_max": 85
+     },
+     "stadium_name": "Vortex Center"
+    },
+    {
+     "name": "FlyQuest",
+     "logo": "t32",
+     "money": 180,
+     "money_max": 270,
+     "popularity_level": 3,
+     "popularity_max_level": 4,
+     "team_level": 6,
+     "staff": {
+      "cnt": 4,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.8,
+      "salary_max": 2.5,
+      "stat_min": 65,
+      "stat_max": 80
+     },
+     "stadium_name": "Quantum Arena"
+    },
+    {
+     "name": "100 Thieves",
+     "logo": "t33",
+     "money": 170,
+     "money_max": 255,
+     "popularity_level": 3,
+     "popularity_max_level": 4,
+     "team_level": 6,
+     "staff": {
+      "cnt": 4,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.7,
+      "salary_max": 2.2,
+      "stat_min": 62,
+      "stat_max": 77
+     },
+     "stadium_name": "Inferno Arena"
+    },
+    {
+     "name": "NRG",
+     "logo": "t34",
+     "money": 160,
+     "money_max": 240,
+     "popularity_level": 3,
+     "popularity_max_level": 3,
+     "team_level": 6,
+     "staff": {
+      "cnt": 3,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.6,
+      "salary_max": 1.8,
+      "stat_min": 60,
+      "stat_max": 75
+     },
+     "stadium_name": "Neon Arena"
+    },
+    {
+     "name": "Shopify Rebellion",
+     "logo": "t35",
+     "money": 140,
+     "money_max": 210,
+     "popularity_level": 2,
+     "popularity_max_level": 3,
+     "team_level": 5,
+     "staff": {
+      "cnt": 3,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.5,
+      "salary_max": 1.5,
+      "stat_min": 55,
+      "stat_max": 70
+     },
+     "stadium_name": "Galactic Hall"
+    },
+    {
+     "name": "Immortals",
+     "logo": "t36",
+     "money": 130,
+     "money_max": 195,
+     "popularity_level": 2,
+     "popularity_max_level": 3,
+     "team_level": 5,
+     "staff": {
+      "cnt": 3,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.4,
+      "salary_max": 1.2,
+      "stat_min": 50,
+      "stat_max": 65
+     },
+     "stadium_name": "Flux Arena"
+    },
+    {
+     "name": "Dignitas",
+     "logo": "t37",
+     "money": 120,
+     "money_max": 180,
+     "popularity_level": 2,
+     "popularity_max_level": 2,
+     "team_level": 5,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.9,
+      "stat_min": 45,
+      "stat_max": 60
+     },
+     "stadium_name": "Arctic Arena"
+    },
+    {
+     "name": "Disguised",
+     "logo": "t38",
+     "money": 100,
+     "money_max": 150,
+     "popularity_level": 1,
+     "popularity_max_level": 2,
+     "team_level": 4,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.7,
+      "stat_min": 40,
+      "stat_max": 55
+     },
+     "stadium_name": "Zenith Center"
+    },
+    {
+     "name": "Team SoloMid",
+     "logo": "t39",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 1,
+     "popularity_max_level": 1,
+     "team_level": 4,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.5,
+      "stat_min": 25,
+      "stat_max": 40
+     },
+     "stadium_name": "Impulse Arena"
+    }
+   ],
+   "region_id": 3,
+   "division": 0,
+   "prize_money": [
+    10,
+    5,
+    3,
+    1.5,
+    0.8
+   ]
+  },
+  {
+   "name": "TACS",
+   "full_name": "#asset/base/text/ui?league.tacs",
+   "teams": [
+    {
+     "name": "paiN Gaming",
+     "logo": "t40",
+     "money": 200,
+     "money_max": 300,
+     "popularity_level": 4,
+     "popularity_max_level": 4,
+     "team_level": 7,
+     "staff": {
+      "cnt": 3,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.5,
+      "salary_max": 1.5,
+      "stat_min": 55,
+      "stat_max": 70
+     },
+     "stadium_name": "Phantom Arena"
+    },
+    {
+     "name": "LOUD",
+     "logo": "t41",
+     "money": 190,
+     "money_max": 285,
+     "popularity_level": 4,
+     "popularity_max_level": 4,
+     "team_level": 7,
+     "staff": {
+      "cnt": 3,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.5,
+      "salary_max": 1.5,
+      "stat_min": 55,
+      "stat_max": 70
+     },
+     "stadium_name": "Apex Arena"
+    },
+    {
+     "name": "FURIA",
+     "logo": "t42",
+     "money": 180,
+     "money_max": 270,
+     "popularity_level": 3,
+     "popularity_max_level": 3,
+     "team_level": 6,
+     "staff": {
+      "cnt": 3,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.5,
+      "salary_max": 1.5,
+      "stat_min": 55,
+      "stat_max": 70
+     },
+     "stadium_name": "Meteor Arena"
+    },
+    {
+     "name": "RED Canids",
+     "logo": "t43",
+     "money": 170,
+     "money_max": 255,
+     "popularity_level": 3,
+     "popularity_max_level": 3,
+     "team_level": 6,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.7,
+      "stat_min": 35,
+      "stat_max": 55
+     },
+     "stadium_name": "Desert Arena"
+    },
+    {
+     "name": "Fluxo",
+     "logo": "t44",
+     "money": 160,
+     "money_max": 240,
+     "popularity_level": 3,
+     "popularity_max_level": 3,
+     "team_level": 6,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.7,
+      "stat_min": 35,
+      "stat_max": 55
+     },
+     "stadium_name": "Iron Arena"
+    },
+    {
+     "name": "INTZ",
+     "logo": "t45",
+     "money": 140,
+     "money_max": 210,
+     "popularity_level": 2,
+     "popularity_max_level": 2,
+     "team_level": 5,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.7,
+      "stat_min": 35,
+      "stat_max": 55
+     },
+     "stadium_name": "Fang Arena"
+    },
+    {
+     "name": "KaBuM!",
+     "logo": "t46",
+     "money": 130,
+     "money_max": 195,
+     "popularity_level": 2,
+     "popularity_max_level": 2,
+     "team_level": 5,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.7,
+      "stat_min": 35,
+      "stat_max": 55
+     },
+     "stadium_name": "Hollow Arena"
+    },
+    {
+     "name": "Liberty",
+     "logo": "t47",
+     "money": 120,
+     "money_max": 180,
+     "popularity_level": 2,
+     "popularity_max_level": 2,
+     "team_level": 5,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.2,
+      "salary_max": 0.5,
+      "stat_min": 20,
+      "stat_max": 40
+     },
+     "stadium_name": "Cipher Center"
+    },
+    {
+     "name": "Los Grandes",
+     "logo": "t48",
+     "money": 100,
+     "money_max": 150,
+     "popularity_level": 1,
+     "popularity_max_level": 2,
+     "team_level": 4,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.2,
+      "salary_max": 0.5,
+      "stat_min": 20,
+      "stat_max": 40
+     },
+     "stadium_name": "Mirage Arena"
+    },
+    {
+     "name": "Vivo Keyd Stars",
+     "logo": "t49",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 1,
+     "popularity_max_level": 2,
+     "team_level": 4,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.2,
+      "salary_max": 0.5,
+      "stat_min": 20,
+      "stat_max": 40
+     },
+     "stadium_name": "Eclipse Arena"
+    }
+   ],
+   "region_id": 4,
+   "division": 0,
+   "prize_money": [
+    6,
+    3,
+    1.5,
+    0.8,
+    0.4
+   ]
+  },
+  {
+   "name": "TACJ",
+   "full_name": "#asset/base/text/ui?league.tacj",
+   "teams": [
+    {
+     "name": "上海RNG.M",
+     "logo": "t50",
+     "money": 92,
+     "money_max": 138,
+     "popularity_level": 1,
+     "popularity_max_level": 3,
+     "team_level": 4,
+     "staff": {
+      "cnt": 3,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.5,
+      "salary_max": 1.5,
+      "stat_min": 55,
+      "stat_max": 70
+     },
+     "stadium_name": "Olympus Arena"
+    },
+    {
+     "name": "济南RW侠",
+     "logo": "t51",
+     "money": 156,
+     "money_max": 234,
+     "popularity_level": 3,
+     "popularity_max_level": 3,
+     "team_level": 6,
+     "staff": {
+      "cnt": 3,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.5,
+      "salary_max": 1.5,
+      "stat_min": 55,
+      "stat_max": 70
+     },
+     "stadium_name": "Diamond Arena"
+    },
+    {
+     "name": "深圳KLG",
+     "logo": "t52",
+     "money": 100,
+     "money_max": 150,
+     "popularity_level": 1,
+     "popularity_max_level": 3,
+     "team_level": 4,
+     "staff": {
+      "cnt": 3,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.5,
+      "salary_max": 1.5,
+      "stat_min": 55,
+      "stat_max": 70
+     },
+     "stadium_name": "Valhalla Arena"
+    },
+    {
+     "name": "重庆狼队",
+     "logo": "t53",
+     "money": 196,
+     "money_max": 294,
+     "popularity_level": 4,
+     "popularity_max_level": 4,
+     "team_level": 7,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.7,
+      "stat_min": 35,
+      "stat_max": 55
+     },
+     "stadium_name": "Gravity Arena"
+    },
+    {
+     "name": "北京WB",
+     "logo": "t54",
+     "money": 186,
+     "money_max": 279,
+     "popularity_level": 4,
+     "popularity_max_level": 4,
+     "team_level": 7,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.7,
+      "stat_min": 35,
+      "stat_max": 55
+     },
+     "stadium_name": "Dawn Arena"
+    },
+    {
+     "name": "广州TTG",
+     "logo": "t55",
+     "money": 180,
+     "money_max": 270,
+     "popularity_level": 4,
+     "popularity_max_level": 4,
+     "team_level": 6,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.7,
+      "stat_min": 35,
+      "stat_max": 55
+     },
+     "stadium_name": "Indigo Arena"
+    },
+    {
+     "name": "南昌RF",
+     "logo": "t56",
+     "money": 94,
+     "money_max": 141,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 3,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.3,
+      "salary_max": 0.7,
+      "stat_min": 35,
+      "stat_max": 55
+     },
+     "stadium_name": "Jet Arena"
+    },
+    {
+     "name": "苏州LSG",
+     "logo": "t57",
+     "money": 90,
+     "money_max": 135,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 3,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.2,
+      "salary_max": 0.5,
+      "stat_min": 20,
+      "stat_max": 40
+     },
+     "stadium_name": "Krypton Arena"
+    },
+    {
+     "name": "厦门VG",
+     "logo": "t58",
+     "money": 100,
+     "money_max": 150,
+     "popularity_level": 1,
+     "popularity_max_level": 2,
+     "team_level": 4,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.2,
+      "salary_max": 0.5,
+      "stat_min": 20,
+      "stat_max": 40
+     },
+     "stadium_name": "Midnight Arena"
+    },
+    {
+     "name": "重庆YTG",
+     "logo": "t59",
+     "money": 86,
+     "money_max": 129,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 3,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.2,
+      "salary_max": 0.5,
+      "stat_min": 20,
+      "stat_max": 40
+     },
+     "stadium_name": "Opal Arena"
+    }
+   ],
+   "region_id": 5,
+   "division": 0,
+   "prize_money": [
+    6,
+    3,
+    1.5,
+    0.8,
+    0.4
+   ]
+  },
+  {
+   "name": "TACK2",
+   "full_name": "#asset/base/text/ui?league.tack2",
+   "teams": [
+    {
+     "name": "T1 Challengers",
+     "logo": "t60",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.2,
+      "salary_max": 0.5,
+      "stat_min": 20,
+      "stat_max": 40
+     },
+     "stadium_name": "Terra Center"
+    },
+    {
+     "name": "Gen.G Global Academy",
+     "logo": "t61",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.2,
+      "salary_max": 0.5,
+      "stat_min": 20,
+      "stat_max": 40
+     },
+     "stadium_name": "Void Hall"
+    },
+    {
+     "name": "Hanwha Life Esports Challengers",
+     "logo": "t62",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.2,
+      "salary_max": 0.5,
+      "stat_min": 20,
+      "stat_max": 40
+     },
+     "stadium_name": "Quake Arena"
+    },
+    {
+     "name": "Dplus KIA Challengers",
+     "logo": "t63",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Sonic Hall"
+    },
+    {
+     "name": "KT Rolster Challengers",
+     "logo": "t64",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Ion Center"
+    },
+    {
+     "name": "BNK FearX Challengers",
+     "logo": "t65",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Matrix Hall"
+    },
+    {
+     "name": "Nongshim RedForce Challengers",
+     "logo": "t66",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Crimson Arena"
+    },
+    {
+     "name": "Kwangdong Freecs Challengers",
+     "logo": "t67",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Titan Center"
+    },
+    {
+     "name": "DRX Challengers",
+     "logo": "t68",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Rift Arena"
+    },
+    {
+     "name": "OKSavingsBank Brion Challengers",
+     "logo": "t69",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Photon Hall"
+    }
+   ],
+   "region_id": 0,
+   "division": 1,
+   "prize_money": [
+    5,
+    2.5,
+    1.5,
+    0.75,
+    0.4
+   ]
+  },
+  {
+   "name": "TACC2",
+   "full_name": "#asset/base/text/ui?league.tacc2",
+   "teams": [
+    {
+     "name": "佛山DRG",
+     "logo": "t70",
+     "money": 172,
+     "money_max": 258,
+     "popularity_level": 3,
+     "popularity_max_level": 3,
+     "team_level": 6,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.2,
+      "salary_max": 0.5,
+      "stat_min": 20,
+      "stat_max": 40
+     },
+     "stadium_name": "Ember Arena"
+    },
+    {
+     "name": "成都AG超玩会",
+     "logo": "t71",
+     "money": 200,
+     "money_max": 300,
+     "popularity_level": 4,
+     "popularity_max_level": 4,
+     "team_level": 7,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.2,
+      "salary_max": 0.5,
+      "stat_min": 20,
+      "stat_max": 40
+     },
+     "stadium_name": "Serpent Hall"
+    },
+    {
+     "name": "武汉eStarPro",
+     "logo": "t72",
+     "money": 192,
+     "money_max": 288,
+     "popularity_level": 4,
+     "popularity_max_level": 4,
+     "team_level": 7,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.2,
+      "salary_max": 0.5,
+      "stat_min": 20,
+      "stat_max": 40
+     },
+     "stadium_name": "Geo Center"
+    },
+    {
+     "name": "西安WE",
+     "logo": "t73",
+     "money": 108,
+     "money_max": 162,
+     "popularity_level": 2,
+     "popularity_max_level": 2,
+     "team_level": 5,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Blazing Arena"
+    },
+    {
+     "name": "上海EDG.M",
+     "logo": "t74",
+     "money": 148,
+     "money_max": 222,
+     "popularity_level": 3,
+     "popularity_max_level": 3,
+     "team_level": 5,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Gale Hall"
+    },
+    {
+     "name": "桐乡情久",
+     "logo": "t75",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 4,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Yin Center"
+    },
+    {
+     "name": "成都MT",
+     "logo": "t76",
+     "money": 82,
+     "money_max": 123,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 3,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Astral Arena"
+    },
+    {
+     "name": "南京HZ",
+     "logo": "t77",
+     "money": 84,
+     "money_max": 126,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 3,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Scarlet Hall"
+    },
+    {
+     "name": "北京SDG",
+     "logo": "t78",
+     "money": 88,
+     "money_max": 132,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 3,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Wraith Arena"
+    },
+    {
+     "name": "天津TE",
+     "logo": "t79",
+     "money": 96,
+     "money_max": 144,
+     "popularity_level": 1,
+     "popularity_max_level": 1,
+     "team_level": 4,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Qilin Center"
+    }
+   ],
+   "region_id": 1,
+   "division": 1,
+   "prize_money": [
+    5,
+    2.5,
+    1.5,
+    0.75,
+    0.4
+   ]
+  },
+  {
+   "name": "TACE2",
+   "full_name": "#asset/base/text/ui?league.tace2",
+   "teams": [
+    {
+     "name": "G2 Esports Academy",
+     "logo": "t80",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.2,
+      "salary_max": 0.5,
+      "stat_min": 20,
+      "stat_max": 40
+     },
+     "stadium_name": "Banshee Arena"
+    },
+    {
+     "name": "Fnatic Rising",
+     "logo": "t81",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.2,
+      "salary_max": 0.5,
+      "stat_min": 20,
+      "stat_max": 40
+     },
+     "stadium_name": "Avalanche Hall"
+    },
+    {
+     "name": "Karmine Corp Academy",
+     "logo": "t82",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.2,
+      "salary_max": 0.5,
+      "stat_min": 20,
+      "stat_max": 40
+     },
+     "stadium_name": "Viridian Center"
+    },
+    {
+     "name": "MAD Lions KOI Academy",
+     "logo": "t83",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Arcane Arena"
+    },
+    {
+     "name": "Team Heretics Academy",
+     "logo": "t84",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Glacier Hall"
+    },
+    {
+     "name": "Team BDS Academy",
+     "logo": "t85",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Magma Center"
+    },
+    {
+     "name": "GIANTX Academy",
+     "logo": "t86",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Runic Arena"
+    },
+    {
+     "name": "SK Gaming Prime",
+     "logo": "t87",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Abyss Hall"
+    },
+    {
+     "name": "Team Vitality Academy",
+     "logo": "t88",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Tempest Arena"
+    },
+    {
+     "name": "Rogue Academy",
+     "logo": "t89",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Silent Center"
+    }
+   ],
+   "region_id": 2,
+   "division": 1,
+   "prize_money": [
+    5,
+    2.5,
+    1.5,
+    0.75,
+    0.4
+   ]
+  },
+  {
+   "name": "TACA2",
+   "full_name": "#asset/base/text/ui?league.taca2",
+   "teams": [
+    {
+     "name": "Cloud9 Academy",
+     "logo": "t90",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.2,
+      "salary_max": 0.5,
+      "stat_min": 20,
+      "stat_max": 40
+     },
+     "stadium_name": "Circuit Arena"
+    },
+    {
+     "name": "Team Liquid Academy",
+     "logo": "t91",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.2,
+      "salary_max": 0.5,
+      "stat_min": 20,
+      "stat_max": 40
+     },
+     "stadium_name": "Outpost Arena"
+    },
+    {
+     "name": "FlyQuest Academy",
+     "logo": "t92",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 2,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.2,
+      "salary_max": 0.5,
+      "stat_min": 20,
+      "stat_max": 40
+     },
+     "stadium_name": "Atomic Center"
+    },
+    {
+     "name": "100 Thieves Academy",
+     "logo": "t93",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Volt Arena"
+    },
+    {
+     "name": "NRG Academy",
+     "logo": "t94",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Data Hall"
+    },
+    {
+     "name": "Shopify Rebellion Academy",
+     "logo": "t95",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Mech Center"
+    },
+    {
+     "name": "Immortals Academy",
+     "logo": "t96",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Pulsar Arena"
+    },
+    {
+     "name": "Dignitas Academy",
+     "logo": "t97",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Vector Hall"
+    },
+    {
+     "name": "Disguised Academy",
+     "logo": "t98",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Havoc Arena"
+    },
+    {
+     "name": "Team SoloMid Academy",
+     "logo": "t99",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Xylo Center"
+    }
+   ],
+   "region_id": 3,
+   "division": 1,
+   "prize_money": [
+    10,
+    5,
+    3,
+    1.5,
+    0.8
+   ]
+  },
+  {
+   "name": "TACS2",
+   "full_name": "#asset/base/text/ui?league.tacs2",
+   "teams": [
+    {
+     "name": "paiN Gaming Academy",
+     "logo": "t100",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Tundra Arena"
+    },
+    {
+     "name": "LOUD Academy",
+     "logo": "t101",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Bayou Hall"
+    },
+    {
+     "name": "FURIA Academy",
+     "logo": "t102",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Condor Arena"
+    },
+    {
+     "name": "RED Canids Academy",
+     "logo": "t103",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 2,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Wind Center"
+    },
+    {
+     "name": "Fluxo Academy",
+     "logo": "t104",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 2,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Stone Arena"
+    },
+    {
+     "name": "INTZ Academy",
+     "logo": "t105",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Temple Arena"
+    },
+    {
+     "name": "KaBuM! Academy",
+     "logo": "t106",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Cobra Hall"
+    },
+    {
+     "name": "Liberty Academy",
+     "logo": "t107",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.1,
+      "salary_max": 0.2,
+      "stat_min": 5,
+      "stat_max": 20
+     },
+     "stadium_name": "Spectral Arena"
+    },
+    {
+     "name": "Los Grandes Academy",
+     "logo": "t108",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.1,
+      "salary_max": 0.2,
+      "stat_min": 5,
+      "stat_max": 20
+     },
+     "stadium_name": "Wild Arena"
+    },
+    {
+     "name": "Vivo Keyd Stars Academy",
+     "logo": "t109",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.1,
+      "salary_max": 0.2,
+      "stat_min": 5,
+      "stat_max": 20
+     },
+     "stadium_name": "Coastal Center"
+    }
+   ],
+   "region_id": 4,
+   "division": 1,
+   "prize_money": [
+    4,
+    2,
+    1,
+    0.5,
+    0.25
+   ]
+  },
+  {
+   "name": "TACJ2",
+   "full_name": "#asset/base/text/ui?league.tacj2",
+   "teams": [
+    {
+     "name": "武汉QZ电竞",
+     "logo": "t110",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Solstice Arena"
+    },
+    {
+     "name": "南京KingZone",
+     "logo": "t111",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Ebony Hall"
+    },
+    {
+     "name": "上海XYG",
+     "logo": "t112",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 2,
+     "team_level": 2,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.15,
+      "salary_max": 0.35,
+      "stat_min": 15,
+      "stat_max": 30
+     },
+     "stadium_name": "Ronin Center"
+    },
+    {
+     "name": "广州TTG青训",
+     "logo": "t113",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 2,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Platinum Arena"
+    },
+    {
+     "name": "成都AG青训",
+     "logo": "t114",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 2,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Chrome Hall"
+    },
+    {
+     "name": "深圳DYG青训",
+     "logo": "t115",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Twilight Arena"
+    },
+    {
+     "name": "佛山DRG青训",
+     "logo": "t116",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.12,
+      "salary_max": 0.25,
+      "stat_min": 10,
+      "stat_max": 25
+     },
+     "stadium_name": "Stardust Center"
+    },
+    {
+     "name": "杭州LGD青训",
+     "logo": "t117",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.1,
+      "salary_max": 0.2,
+      "stat_min": 5,
+      "stat_max": 20
+     },
+     "stadium_name": "Quartz Arena"
+    },
+    {
+     "name": "西安WE青训",
+     "logo": "t118",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.1,
+      "salary_max": 0.2,
+      "stat_min": 5,
+      "stat_max": 20
+     },
+     "stadium_name": "Ethereal Hall"
+    },
+    {
+     "name": "长沙TES.A青训",
+     "logo": "t119",
+     "money": 80,
+     "money_max": 120,
+     "popularity_level": 0,
+     "popularity_max_level": 1,
+     "team_level": 1,
+     "staff": {
+      "cnt": 1,
+      "age_min": 40,
+      "age_max": 50,
+      "contract_length_min": 1,
+      "contract_length_max": 2,
+      "salary_min": 0.1,
+      "salary_max": 0.2,
+      "stat_min": 5,
+      "stat_max": 20
+     },
+     "stadium_name": "Garnet Center"
+    }
+   ],
+   "region_id": 5,
+   "division": 1,
+   "prize_money": [
+    4,
+    2,
+    1,
+    0.5,
+    0.25
+   ]
+  }
+ ],
+ "tournaments": [
+  {
+   "name": "Challengers E",
+   "full_name": "#asset/base/text/ui?tournament.challengers_east",
+   "ty": "ChallengersEastern",
+   "prize_money": [
+    6,
+    3,
+    1.5,
+    0.8,
+    0.4
+   ]
+  },
+  {
+   "name": "Challengers W",
+   "full_name": "#asset/base/text/ui?tournament.challengers_west",
+   "ty": "ChallengersWestern",
+   "prize_money": [
+    6,
+    3,
+    1.5,
+    0.8,
+    0.4
+   ]
+  },
+  {
+   "name": "Masters",
+   "full_name": "#asset/base/text/ui?tournament.masters",
+   "ty": "Masters",
+   "prize_money": [
+    20,
+    10,
+    5,
+    2.5,
+    1.2
+   ]
+  },
+  {
+   "name": "Champions",
+   "full_name": "#asset/base/text/ui?tournament.champions",
+   "ty": "Champions",
+   "prize_money": [
+    20,
+    10,
+    5,
+    2.5,
+    1.2
+   ]
+  }
+ ],
+ "athlete_gen_setting": {
+  "stat_range_by_athlete_level": [
+   {
+    "min": 1,
+    "max": 1
+   },
+   {
+    "min": 1,
+    "max": 4
+   },
+   {
+    "min": 5,
+    "max": 8
+   },
+   {
+    "min": 9,
+    "max": 12
+   },
+   {
+    "min": 13,
+    "max": 16
+   },
+   {
+    "min": 17,
+    "max": 20
+   },
+   {
+    "min": 21,
+    "max": 25
+   },
+   {
+    "min": 26,
+    "max": 30
+   },
+   {
+    "min": 31,
+    "max": 35
+   },
+   {
+    "min": 36,
+    "max": 39
+   },
+   {
+    "min": 40,
+    "max": 44
+   },
+   {
+    "min": 45,
+    "max": 49
+   },
+   {
+    "min": 50,
+    "max": 54
+   },
+   {
+    "min": 55,
+    "max": 59
+   },
+   {
+    "min": 60,
+    "max": 64
+   },
+   {
+    "min": 65,
+    "max": 68
+   },
+   {
+    "min": 69,
+    "max": 72
+   },
+   {
+    "min": 73,
+    "max": 76
+   },
+   {
+    "min": 77,
+    "max": 80
+   },
+   {
+    "min": 81,
+    "max": 84
+   },
+   {
+    "min": 85,
+    "max": 88
+   },
+   {
+    "min": 89,
+    "max": 93
+   },
+   {
+    "min": 94,
+    "max": 97
+   },
+   {
+    "min": 98,
+    "max": 100
+   },
+   {
+    "min": 100,
+    "max": 100
+   },
+   {
+    "min": 100,
+    "max": 100
+   },
+   {
+    "min": 100,
+    "max": 100
+   }
+  ],
+  "salary_range": [
+   {
+    "min": 0.1,
+    "max": 0.15
+   },
+   {
+    "min": 0.15,
+    "max": 0.2
+   },
+   {
+    "min": 0.2,
+    "max": 0.25
+   },
+   {
+    "min": 0.25,
+    "max": 0.35
+   },
+   {
+    "min": 0.35,
+    "max": 0.45
+   },
+   {
+    "min": 0.45,
+    "max": 0.6
+   },
+   {
+    "min": 0.6,
+    "max": 0.8
+   },
+   {
+    "min": 0.8,
+    "max": 0.9
+   },
+   {
+    "min": 0.9,
+    "max": 1.1
+   },
+   {
+    "min": 1.1,
+    "max": 1.3
+   },
+   {
+    "min": 1.3,
+    "max": 1.5
+   },
+   {
+    "min": 1.5,
+    "max": 1.7
+   },
+   {
+    "min": 1.7,
+    "max": 1.9
+   },
+   {
+    "min": 1.9,
+    "max": 2.2
+   },
+   {
+    "min": 2.2,
+    "max": 2.5
+   },
+   {
+    "min": 2.5,
+    "max": 2.8
+   },
+   {
+    "min": 2.8,
+    "max": 3.1
+   },
+   {
+    "min": 3.1,
+    "max": 3.5
+   },
+   {
+    "min": 3.5,
+    "max": 4
+   },
+   {
+    "min": 4,
+    "max": 4.5
+   },
+   {
+    "min": 4.5,
+    "max": 6
+   },
+   {
+    "min": 6,
+    "max": 10
+   },
+   {
+    "min": 6,
+    "max": 10
+   },
+   {
+    "min": 6,
+    "max": 10
+   },
+   {
+    "min": 6,
+    "max": 10
+   },
+   {
+    "min": 6,
+    "max": 10
+   },
+   {
+    "min": 6,
+    "max": 10
+   }
+  ],
+  "transfer_fee_range": [
+   {
+    "min": 0.1,
+    "max": 0.2
+   },
+   {
+    "min": 0.2,
+    "max": 0.4
+   },
+   {
+    "min": 0.4,
+    "max": 0.6
+   },
+   {
+    "min": 0.6,
+    "max": 0.8
+   },
+   {
+    "min": 0.8,
+    "max": 1
+   },
+   {
+    "min": 1,
+    "max": 1.2
+   },
+   {
+    "min": 1.2,
+    "max": 1.5
+   },
+   {
+    "min": 1.5,
+    "max": 2
+   },
+   {
+    "min": 2,
+    "max": 2.5
+   },
+   {
+    "min": 2.5,
+    "max": 3
+   },
+   {
+    "min": 3,
+    "max": 4
+   },
+   {
+    "min": 4,
+    "max": 6
+   },
+   {
+    "min": 6,
+    "max": 9
+   },
+   {
+    "min": 9,
+    "max": 12
+   },
+   {
+    "min": 12,
+    "max": 15
+   },
+   {
+    "min": 15,
+    "max": 20
+   },
+   {
+    "min": 20,
+    "max": 30
+   },
+   {
+    "min": 30,
+    "max": 40
+   },
+   {
+    "min": 40,
+    "max": 60
+   },
+   {
+    "min": 60,
+    "max": 80
+   },
+   {
+    "min": 80,
+    "max": 100
+   },
+   {
+    "min": 100,
+    "max": 150
+   },
+   {
+    "min": 100,
+    "max": 150
+   },
+   {
+    "min": 100,
+    "max": 150
+   },
+   {
+    "min": 100,
+    "max": 150
+   },
+   {
+    "min": 100,
+    "max": 150
+   },
+   {
+    "min": 100,
+    "max": 150
+   }
+  ],
+  "stamina_recovery_range": {
+   "min": 3,
+   "max": 15
+  },
+  "stamina_cost_range": {
+   "min": 5,
+   "max": 20
+  },
+  "team_setting": [
+   {
+    "core_athlete_level": {
+     "min": 0,
+     "max": 0
+    },
+    "important_athlete_level": {
+     "min": 0,
+     "max": 0
+    },
+    "general_athlete_level": {
+     "min": 0,
+     "max": 0
+    },
+    "sub_athlete_level": {
+     "min": 0,
+     "max": 0
+    },
+    "prospect_athlete_level": {
+     "min": 0,
+     "max": 0
+    }
+   },
+   {
+    "core_athlete_level": {
+     "min": 5,
+     "max": 5
+    },
+    "important_athlete_level": {
+     "min": 4,
+     "max": 4
+    },
+    "general_athlete_level": {
+     "min": 3,
+     "max": 3
+    },
+    "sub_athlete_level": {
+     "min": 2,
+     "max": 2
+    },
+    "prospect_athlete_level": {
+     "min": 1,
+     "max": 1
+    }
+   },
+   {
+    "core_athlete_level": {
+     "min": 7,
+     "max": 7
+    },
+    "important_athlete_level": {
+     "min": 6,
+     "max": 6
+    },
+    "general_athlete_level": {
+     "min": 5,
+     "max": 5
+    },
+    "sub_athlete_level": {
+     "min": 4,
+     "max": 4
+    },
+    "prospect_athlete_level": {
+     "min": 2,
+     "max": 3
+    }
+   },
+   {
+    "core_athlete_level": {
+     "min": 10,
+     "max": 10
+    },
+    "important_athlete_level": {
+     "min": 8,
+     "max": 9
+    },
+    "general_athlete_level": {
+     "min": 7,
+     "max": 7
+    },
+    "sub_athlete_level": {
+     "min": 6,
+     "max": 6
+    },
+    "prospect_athlete_level": {
+     "min": 4,
+     "max": 5
+    }
+   },
+   {
+    "core_athlete_level": {
+     "min": 12,
+     "max": 12
+    },
+    "important_athlete_level": {
+     "min": 10,
+     "max": 11
+    },
+    "general_athlete_level": {
+     "min": 8,
+     "max": 9
+    },
+    "sub_athlete_level": {
+     "min": 7,
+     "max": 7
+    },
+    "prospect_athlete_level": {
+     "min": 6,
+     "max": 6
+    }
+   },
+   {
+    "core_athlete_level": {
+     "min": 14,
+     "max": 15
+    },
+    "important_athlete_level": {
+     "min": 13,
+     "max": 13
+    },
+    "general_athlete_level": {
+     "min": 11,
+     "max": 12
+    },
+    "sub_athlete_level": {
+     "min": 9,
+     "max": 10
+    },
+    "prospect_athlete_level": {
+     "min": 7,
+     "max": 7
+    }
+   },
+   {
+    "core_athlete_level": {
+     "min": 17,
+     "max": 18
+    },
+    "important_athlete_level": {
+     "min": 16,
+     "max": 16
+    },
+    "general_athlete_level": {
+     "min": 14,
+     "max": 15
+    },
+    "sub_athlete_level": {
+     "min": 13,
+     "max": 13
+    },
+    "prospect_athlete_level": {
+     "min": 8,
+     "max": 9
+    }
+   },
+   {
+    "core_athlete_level": {
+     "min": 20,
+     "max": 20
+    },
+    "important_athlete_level": {
+     "min": 19,
+     "max": 19
+    },
+    "general_athlete_level": {
+     "min": 17,
+     "max": 18
+    },
+    "sub_athlete_level": {
+     "min": 15,
+     "max": 16
+    },
+    "prospect_athlete_level": {
+     "min": 10,
+     "max": 11
+    }
+   }
+  ]
+ },
+ "merchandise_product_setting": {
+  "products": [
+   {
+    "i18n_key": "#asset/base/text/ui?merchandise.wrist_guard",
+    "dev_cost": 9000000,
+    "unit_cost": 8000,
+    "default_margin": 150,
+    "demand_pct": 60
+   },
+   {
+    "i18n_key": "#asset/base/text/ui?merchandise.glasses",
+    "dev_cost": 9000000,
+    "unit_cost": 15000,
+    "default_margin": 130,
+    "demand_pct": 40
+   },
+   {
+    "i18n_key": "#asset/base/text/ui?merchandise.gaming_chair",
+    "dev_cost": 15000000,
+    "unit_cost": 150000,
+    "default_margin": 80,
+    "demand_pct": 10
+   },
+   {
+    "i18n_key": "#asset/base/text/ui?merchandise.mouse",
+    "dev_cost": 12000000,
+    "unit_cost": 30000,
+    "default_margin": 100,
+    "demand_pct": 30
+   },
+   {
+    "i18n_key": "#asset/base/text/ui?merchandise.mousepad",
+    "dev_cost": 10000000,
+    "unit_cost": 5000,
+    "default_margin": 200,
+    "demand_pct": 80
+   },
+   {
+    "i18n_key": "#asset/base/text/ui?merchandise.keyboard",
+    "dev_cost": 10000000,
+    "unit_cost": 50000,
+    "default_margin": 80,
+    "demand_pct": 20
+   },
+   {
+    "i18n_key": "#asset/base/text/ui?merchandise.lightstick",
+    "dev_cost": 18000000,
+    "unit_cost": 10000,
+    "default_margin": 150,
+    "demand_pct": 100
+   },
+   {
+    "i18n_key": "#asset/base/text/ui?merchandise.poster",
+    "dev_cost": 6000000,
+    "unit_cost": 2000,
+    "default_margin": 250,
+    "demand_pct": 100
+   },
+   {
+    "i18n_key": "#asset/base/text/ui?merchandise.calendar",
+    "dev_cost": 8000000,
+    "unit_cost": 5000,
+    "default_margin": 200,
+    "demand_pct": 80
+   },
+   {
+    "i18n_key": "#asset/base/text/ui?merchandise.uniform",
+    "dev_cost": 15000000,
+    "unit_cost": 25000,
+    "default_margin": 100,
+    "demand_pct": 50
+   }
+  ],
+  "daily_purchase_rate_per_fan": 20,
+  "team_daily_purchase_rate_per_fan": 1,
+  "price_elasticity_x100": 200
+ },
+ "stadium_setting": {
+  "max_capacity": [
+   5000,
+   7000,
+   9000,
+   12000,
+   15000
+  ],
+  "maintenance_cost": [
+   0.3,
+   0.6,
+   1,
+   2,
+   3
+  ],
+  "upgrade_cost": [
+   3,
+   8,
+   15,
+   30,
+   30
+  ],
+  "ticket_base_price": 7000,
+  "ticket_pop_price": 15000
+ },
+ "gaming_house_decoration_setting": {
+  "furniture": [
+   {
+    "id": "basic_chair",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_0",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.basic_chair",
+    "price": 1000000,
+    "welfare": 1,
+    "width": 1,
+    "height": 2,
+    "interaction_kind": "computer",
+    "interaction_animation_tag": "gaming"
+   },
+   {
+    "id": "basic_desk",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_3",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.basic_desk",
+    "price": 1000000,
+    "welfare": 1,
+    "width": 1,
+    "height": 2,
+    "interaction_kind": "wash",
+    "interaction_animation_tag": "wash_hand"
+   },
+   {
+    "id": "basic_sofa",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_1",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.basic_sofa",
+    "price": 1000000,
+    "welfare": 1,
+    "width": 1,
+    "height": 2,
+    "interaction_kind": "basic",
+    "interaction_animation_tag": "shit"
+   },
+   {
+    "id": "furniture_04",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_2",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_04",
+    "price": 1000000,
+    "welfare": 1,
+    "width": 1,
+    "height": 3,
+    "interaction_kind": "shower",
+    "interaction_animation_tag": ""
+   },
+   {
+    "id": "furniture_05",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_4",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_05",
+    "price": 1000000,
+    "welfare": 1,
+    "width": 2,
+    "height": 2,
+    "interaction_kind": "table",
+    "interaction_animation_tag": "eating"
+   },
+   {
+    "id": "furniture_06",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_5",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_06",
+    "price": 1000000,
+    "welfare": 1,
+    "width": 1,
+    "height": 2,
+    "interaction_kind": "cleaning",
+    "interaction_animation_tag": "cleaning_run"
+   },
+   {
+    "id": "furniture_07",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_6",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_07",
+    "price": 2000000,
+    "welfare": 2,
+    "width": 2,
+    "height": 2,
+    "interaction_kind": "bed",
+    "interaction_animation_tag": "sleeping_gamer"
+   },
+   {
+    "id": "furniture_08",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_7",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_08",
+    "price": 1000000,
+    "welfare": 1,
+    "width": 1,
+    "height": 2,
+    "interaction_kind": "vase",
+    "interaction_animation_tag": "watering"
+   },
+   {
+    "id": "furniture_09",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_8",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_09",
+    "price": 1000000,
+    "welfare": 1,
+    "width": 1,
+    "height": 2,
+    "interaction_kind": "vase",
+    "interaction_animation_tag": "watering"
+   },
+   {
+    "id": "furniture_10",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_9",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_10",
+    "price": 1000000,
+    "welfare": 1,
+    "width": 1,
+    "height": 2,
+    "interaction_kind": "tv",
+    "interaction_animation_tag": "remote_controll"
+   },
+   {
+    "id": "furniture_11",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_12",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_11",
+    "price": 2000000,
+    "welfare": 2,
+    "width": 1,
+    "height": 2,
+    "interaction_kind": "tv",
+    "interaction_animation_tag": "remote_controll"
+   },
+   {
+    "id": "furniture_12",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_10",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_12",
+    "price": 1000000,
+    "welfare": 1,
+    "width": 2,
+    "height": 2,
+    "interaction_kind": "pull_up",
+    "interaction_animation_tag": "pull_up"
+   },
+   {
+    "id": "furniture_13",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_11",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_13",
+    "price": 1000000,
+    "welfare": 1,
+    "width": 2,
+    "height": 1,
+    "interaction_kind": "squat",
+    "interaction_animation_tag": "squat"
+   },
+   {
+    "id": "furniture_16",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_13",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_16",
+    "price": 1000000,
+    "welfare": 1,
+    "width": 3,
+    "height": 1,
+    "interaction_kind": "dumbbell",
+    "interaction_animation_tag": "dumbbell"
+   },
+   {
+    "id": "furniture_17",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_14",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_17",
+    "price": 2000000,
+    "welfare": 2,
+    "width": 2,
+    "height": 1,
+    "interaction_kind": "treadmill",
+    "interaction_animation_tag": "run"
+   },
+   {
+    "id": "furniture_18",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_15",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_18",
+    "price": 1000000,
+    "welfare": 1,
+    "width": 2,
+    "height": 1,
+    "interaction_kind": "bed",
+    "interaction_animation_tag": "sleeping_gamer"
+   },
+   {
+    "id": "furniture_19",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_16",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_19",
+    "price": 2000000,
+    "welfare": 2,
+    "width": 5,
+    "height": 2,
+    "interaction_kind": "table",
+    "interaction_animation_tag": "eating"
+   },
+   {
+    "id": "furniture_20",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_17",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_20",
+    "price": 2000000,
+    "welfare": 2,
+    "width": 1,
+    "height": 2,
+    "interaction_kind": "computer",
+    "interaction_animation_tag": "gaming"
+   },
+   {
+    "id": "furniture_21",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_19",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_21",
+    "price": 2000000,
+    "welfare": 2,
+    "width": 1,
+    "height": 2,
+    "interaction_kind": "wash",
+    "interaction_animation_tag": "wash_hand"
+   },
+   {
+    "id": "furniture_22",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_27",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_22",
+    "price": 3000000,
+    "welfare": 3,
+    "width": 1,
+    "height": 2,
+    "interaction_kind": "wash",
+    "interaction_animation_tag": "wash_hand"
+   },
+   {
+    "id": "furniture_23",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_20",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_23",
+    "price": 2000000,
+    "welfare": 2,
+    "width": 1,
+    "height": 3,
+    "interaction_kind": "shower",
+    "interaction_animation_tag": ""
+   },
+   {
+    "id": "furniture_24",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_21",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_24",
+    "price": 3000000,
+    "welfare": 3,
+    "width": 2,
+    "height": 2,
+    "interaction_kind": "dumbbell",
+    "interaction_animation_tag": "dumbbell"
+   },
+   {
+    "id": "furniture_25",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_18",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_25",
+    "price": 1000000,
+    "welfare": 1,
+    "width": 1,
+    "height": 2,
+    "interaction_kind": "bathroom",
+    "interaction_animation_tag": "shit"
+   },
+   {
+    "id": "furniture_26",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_22",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_26",
+    "price": 2000000,
+    "welfare": 2,
+    "width": 1,
+    "height": 2,
+    "interaction_kind": "vase",
+    "interaction_animation_tag": "watering"
+   },
+   {
+    "id": "furniture_27",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_23",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_27",
+    "price": 2000000,
+    "welfare": 2,
+    "width": 1,
+    "height": 2,
+    "interaction_kind": "vase",
+    "interaction_animation_tag": "watering"
+   },
+   {
+    "id": "furniture_28",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_24",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_28",
+    "price": 4000000,
+    "welfare": 4,
+    "width": 4,
+    "height": 2,
+    "interaction_kind": "tv",
+    "interaction_animation_tag": "remote_controll"
+   },
+   {
+    "id": "furniture_29",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_25",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_29",
+    "price": 3000000,
+    "welfare": 3,
+    "width": 5,
+    "height": 2,
+    "interaction_kind": "table",
+    "interaction_animation_tag": "eating"
+   },
+   {
+    "id": "furniture_30",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_26",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_30",
+    "price": 3000000,
+    "welfare": 3,
+    "width": 1,
+    "height": 2,
+    "interaction_kind": "bathroom",
+    "interaction_animation_tag": "shit"
+   },
+   {
+    "id": "furniture_31",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_28",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_31",
+    "price": 3000000,
+    "welfare": 1,
+    "width": 1,
+    "height": 3,
+    "interaction_kind": "shower",
+    "interaction_animation_tag": ""
+   },
+   {
+    "id": "furniture_32",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_29",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_32",
+    "price": 4000000,
+    "welfare": 4,
+    "width": 2,
+    "height": 2,
+    "interaction_kind": "computer",
+    "interaction_animation_tag": "gaming"
+   },
+   {
+    "id": "furniture_33",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_30",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_33",
+    "price": 3000000,
+    "welfare": 1,
+    "width": 2,
+    "height": 1,
+    "interaction_kind": "bed",
+    "interaction_animation_tag": "sleeping_gamer"
+   },
+   {
+    "id": "furniture_34",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_31",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_34",
+    "price": 2000000,
+    "welfare": 2,
+    "width": 2,
+    "height": 1,
+    "interaction_kind": "squat",
+    "interaction_animation_tag": "squat"
+   },
+   {
+    "id": "furniture_35",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_32",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_35",
+    "price": 3000000,
+    "welfare": 3,
+    "width": 2,
+    "height": 2,
+    "interaction_kind": "pull_up",
+    "interaction_animation_tag": "pull_up"
+   },
+   {
+    "id": "furniture_36",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_furniture",
+    "asset_tag": "objects_33",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.furniture.furniture_36",
+    "price": 4000000,
+    "welfare": 4,
+    "width": 2,
+    "height": 1,
+    "interaction_kind": "treadmill",
+    "interaction_animation_tag": ""
+   }
+  ],
+  "wallpapers": [
+   {
+    "id": "plain_wallpaper",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_wallpapers",
+    "asset_tag": "wallpaper_0",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.wallpaper.plain",
+    "price": 100000,
+    "welfare": 0,
+    "width": 1,
+    "height": 3
+   },
+   {
+    "id": "clean_wallpaper",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_wallpapers",
+    "asset_tag": "wallpaper_1",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.wallpaper.clean",
+    "price": 100000,
+    "welfare": 0,
+    "width": 1,
+    "height": 3
+   },
+   {
+    "id": "premium_wallpaper",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_wallpapers",
+    "asset_tag": "wallpaper_2",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.wallpaper.premium",
+    "price": 100000,
+    "welfare": 0,
+    "width": 1,
+    "height": 3
+   },
+   {
+    "id": "wallpaper_04",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_wallpapers",
+    "asset_tag": "wallpaper_3",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.wallpaper.wallpaper_04",
+    "price": 100000,
+    "welfare": 0,
+    "width": 1,
+    "height": 3
+   },
+   {
+    "id": "wallpaper_05",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_wallpapers",
+    "asset_tag": "wallpaper_4",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.wallpaper.wallpaper_05",
+    "price": 100000,
+    "welfare": 0,
+    "width": 1,
+    "height": 3
+   }
+  ],
+  "walls": [
+   {
+    "id": "plain_partition",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_walls",
+    "asset_tag": "wall_0",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.wall.plain_partition",
+    "price": 200000,
+    "welfare": 0,
+    "width": 1,
+    "height": 3
+   },
+   {
+    "id": "clean_partition",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_walls",
+    "asset_tag": "wall_1",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.wall.clean_partition",
+    "price": 200000,
+    "welfare": 0,
+    "width": 1,
+    "height": 3
+   },
+   {
+    "id": "premium_partition",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_walls",
+    "asset_tag": "wall_2",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.wall.premium_partition",
+    "price": 200000,
+    "welfare": 0,
+    "width": 1,
+    "height": 3
+   }
+  ],
+  "windows": [
+   {
+    "id": "wide_window",
+    "asset_path": "asset/base/aseprite_resources/UI_aseprite/gaming_house_windows",
+    "asset_tag": "windows_0",
+    "name_i18n_key": "#asset/base/text/ui?gaming_house.window.wide",
+    "price": 300000,
+    "welfare": 0,
+    "width": 2,
+    "height": 1
+   }
+  ]
+ },
+ "champion_proficiency_setting": {
+  "neutral": 50,
+  "slope_per_point": 0,
+  "penalty_slope_per_point": 0,
+  "ratio_min": 1000,
+  "ratio_max": 1200,
+  "decay_per_week": 10,
+  "play_gain_per_set": 60,
+  "train_gain_per_week": 100,
+  "global_floor_min": 80
+ },
+ "sponsor_setting": {
+  "sponsors": [
+   {
+    "id": "dawnbyte",
+    "name": "DawnByte",
+    "industry": "tech",
+    "tier": "S",
+    "slot": "Main",
+    "signing_bonus": 69000000,
+    "monthly_amount": 17250000,
+    "bonus_condition": "ChampionshipWin",
+    "bonus_amount": 184000000,
+    "min_fan_count": 300000,
+    "first_division_only": true
+   },
+   {
+    "id": "aurorair",
+    "name": "Aurora Air",
+    "industry": "airline",
+    "tier": "S",
+    "slot": "Main",
+    "signing_bonus": 92000000,
+    "monthly_amount": 23000000,
+    "bonus_condition": "InternationalTitle",
+    "bonus_amount": 92000000,
+    "min_fan_count": 280000,
+    "first_division_only": true
+   },
+   {
+    "id": "zenith_mesh",
+    "name": "ZenithMesh",
+    "industry": "telecom",
+    "tier": "S",
+    "slot": "Main",
+    "signing_bonus": 184000000,
+    "monthly_amount": 17250000,
+    "bonus_condition": {
+     "HomeAttendanceGrowthAtLeastBp": {
+      "bp": 500
+     }
+    },
+    "bonus_amount": 69000000,
+    "min_fan_count": 260000,
+    "first_division_only": true
+   },
+   {
+    "id": "voltcore",
+    "name": "VoltCore Energy",
+    "industry": "beverage",
+    "tier": "A",
+    "slot": "Main",
+    "signing_bonus": 68000000,
+    "monthly_amount": 17000000,
+    "bonus_condition": {
+     "LeagueRankAtMost": {
+      "rank": 2
+     }
+    },
+    "bonus_amount": 68000000,
+    "min_fan_count": 200000,
+    "first_division_only": true
+   },
+   {
+    "id": "nova_motors",
+    "name": "Nova Motors",
+    "industry": "automotive",
+    "tier": "A",
+    "slot": "Main",
+    "signing_bonus": 136000000,
+    "monthly_amount": 12750000,
+    "bonus_condition": {
+     "LeagueRankAtMost": {
+      "rank": 3
+     }
+    },
+    "bonus_amount": 51000000,
+    "min_fan_count": 180000,
+    "first_division_only": true
+   },
+   {
+    "id": "grid_telecom",
+    "name": "GridTelecom",
+    "industry": "telecom",
+    "tier": "A",
+    "slot": "Main",
+    "signing_bonus": 51000000,
+    "monthly_amount": 12750000,
+    "bonus_condition": {
+     "FanGrowthAtLeastBp": {
+      "bp": 3000
+     }
+    },
+    "bonus_amount": 136000000,
+    "min_fan_count": 160000,
+    "first_division_only": false
+   },
+   {
+    "id": "crownwave_media",
+    "name": "CrownWave Media",
+    "industry": "game",
+    "tier": "A",
+    "slot": "Main",
+    "signing_bonus": 68000000,
+    "monthly_amount": 17000000,
+    "bonus_condition": "InternationalQualified",
+    "bonus_amount": 68000000,
+    "min_fan_count": 150000,
+    "first_division_only": false
+   },
+   {
+    "id": "ironpeak",
+    "name": "IronPeak Gear",
+    "industry": "peripherals",
+    "tier": "B",
+    "slot": "Main",
+    "signing_bonus": 96000000,
+    "monthly_amount": 9000000,
+    "bonus_condition": {
+     "LeagueRankAtMost": {
+      "rank": 6
+     }
+    },
+    "bonus_amount": 36000000,
+    "min_fan_count": 120000,
+    "first_division_only": false
+   },
+   {
+    "id": "starbrew",
+    "name": "StarBrew Coffee",
+    "industry": "food",
+    "tier": "B",
+    "slot": "Main",
+    "signing_bonus": 48000000,
+    "monthly_amount": 12000000,
+    "bonus_condition": {
+     "FanGrowthAtLeastBp": {
+      "bp": 500
+     }
+    },
+    "bonus_amount": 48000000,
+    "min_fan_count": 100000,
+    "first_division_only": false
+   },
+   {
+    "id": "bluefin_bank",
+    "name": "BlueFin Bank",
+    "industry": "finance",
+    "tier": "B",
+    "slot": "Main",
+    "signing_bonus": 36000000,
+    "monthly_amount": 9000000,
+    "bonus_condition": "ChampionshipWin",
+    "bonus_amount": 96000000,
+    "min_fan_count": 100000,
+    "first_division_only": false
+   },
+   {
+    "id": "silverpine_cover",
+    "name": "SilverPine Cover",
+    "industry": "finance",
+    "tier": "B",
+    "slot": "Main",
+    "signing_bonus": 48000000,
+    "monthly_amount": 12000000,
+    "bonus_condition": "DivisionMaintained",
+    "bonus_amount": 48000000,
+    "min_fan_count": 90000,
+    "first_division_only": false
+   },
+   {
+    "id": "pixelworks",
+    "name": "PixelWorks Studio",
+    "industry": "game",
+    "tier": "C",
+    "slot": "Main",
+    "signing_bonus": 32000000,
+    "monthly_amount": 8000000,
+    "bonus_condition": {
+     "FanGrowthAtLeastBp": {
+      "bp": 1000
+     }
+    },
+    "bonus_amount": 32000000,
+    "min_fan_count": 50000,
+    "first_division_only": false
+   },
+   {
+    "id": "hansol_mart",
+    "name": "Hansol Mart",
+    "industry": "retail",
+    "tier": "C",
+    "slot": "Main",
+    "signing_bonus": 64000000,
+    "monthly_amount": 6000000,
+    "bonus_condition": {
+     "LeagueRankAtMost": {
+      "rank": 3
+     }
+    },
+    "bonus_amount": 24000000,
+    "min_fan_count": 40000,
+    "first_division_only": false
+   },
+   {
+    "id": "moonrice",
+    "name": "MoonRice Foods",
+    "industry": "food",
+    "tier": "C",
+    "slot": "Main",
+    "signing_bonus": 24000000,
+    "monthly_amount": 6000000,
+    "bonus_condition": {
+     "HomeAttendanceGrowthAtLeastBp": {
+      "bp": 200
+     }
+    },
+    "bonus_amount": 64000000,
+    "min_fan_count": 35000,
+    "first_division_only": false
+   },
+   {
+    "id": "riverpost",
+    "name": "RiverPost",
+    "industry": "retail",
+    "tier": "C",
+    "slot": "Main",
+    "signing_bonus": 32000000,
+    "monthly_amount": 8000000,
+    "bonus_condition": "DivisionMaintained",
+    "bonus_amount": 32000000,
+    "min_fan_count": 30000,
+    "first_division_only": false
+   },
+   {
+    "id": "cozy_pc",
+    "name": "CozyPC Cafe",
+    "industry": "pcroom",
+    "tier": "D",
+    "slot": "Main",
+    "signing_bonus": 20000000,
+    "monthly_amount": 5000000,
+    "bonus_condition": {
+     "FanGrowthAtLeastBp": {
+      "bp": 500
+     }
+    },
+    "bonus_amount": 20000000,
+    "min_fan_count": 12000,
+    "first_division_only": false
+   },
+   {
+    "id": "dailyfit",
+    "name": "DailyFit Gym",
+    "industry": "lifestyle",
+    "tier": "D",
+    "slot": "Main",
+    "signing_bonus": 15000000,
+    "monthly_amount": 7083333.333333333,
+    "bonus_condition": "None",
+    "bonus_amount": 0,
+    "min_fan_count": 8000,
+    "first_division_only": false
+   },
+   {
+    "id": "ontrack_lms",
+    "name": "OnTrack Academy",
+    "industry": "education",
+    "tier": "D",
+    "slot": "Main",
+    "signing_bonus": 20000000,
+    "monthly_amount": 5000000,
+    "bonus_condition": "DivisionMaintained",
+    "bonus_amount": 20000000,
+    "min_fan_count": 8000,
+    "first_division_only": false
+   },
+   {
+    "id": "maple_node",
+    "name": "MapleNode",
+    "industry": "tech",
+    "tier": "D",
+    "slot": "Main",
+    "signing_bonus": 40000000,
+    "monthly_amount": 3750000,
+    "bonus_condition": {
+     "FanCountAtLeast": {
+      "count": 12000
+     }
+    },
+    "bonus_amount": 15000000,
+    "min_fan_count": 5000,
+    "first_division_only": false
+   },
+   {
+    "id": "sunny_crate",
+    "name": "SunnyCrate",
+    "industry": "retail",
+    "tier": "D",
+    "slot": "Main",
+    "signing_bonus": 20000000,
+    "monthly_amount": 5000000,
+    "bonus_condition": {
+     "LeagueRankAtMost": {
+      "rank": 4
+     }
+    },
+    "bonus_amount": 20000000,
+    "min_fan_count": 6000,
+    "first_division_only": false
+   },
+   {
+    "id": "harbor_spring",
+    "name": "HarborSpring",
+    "industry": "beverage",
+    "tier": "D",
+    "slot": "Main",
+    "signing_bonus": 15000000,
+    "monthly_amount": 3750000,
+    "bonus_condition": {
+     "HomeAttendanceGrowthAtLeastBp": {
+      "bp": 100
+     }
+    },
+    "bonus_amount": 40000000,
+    "min_fan_count": 15000,
+    "first_division_only": false
+   },
+   {
+    "id": "vortex_gear",
+    "name": "Vortex Gear",
+    "industry": "peripherals",
+    "tier": "S",
+    "slot": "Sub",
+    "signing_bonus": 28500000,
+    "monthly_amount": 7125000,
+    "bonus_condition": "ChampionshipWin",
+    "bonus_amount": 76000000,
+    "min_fan_count": 260000,
+    "first_division_only": true
+   },
+   {
+    "id": "eclipse_cloud",
+    "name": "EclipseCloud",
+    "industry": "tech",
+    "tier": "S",
+    "slot": "Sub",
+    "signing_bonus": 76000000,
+    "monthly_amount": 7125000,
+    "bonus_condition": "InternationalTitle",
+    "bonus_amount": 28500000,
+    "min_fan_count": 240000,
+    "first_division_only": true
+   },
+   {
+    "id": "apex_travel",
+    "name": "ApexTravel",
+    "industry": "airline",
+    "tier": "S",
+    "slot": "Sub",
+    "signing_bonus": 38000000,
+    "monthly_amount": 9500000,
+    "bonus_condition": {
+     "HomeAttendanceGrowthAtLeastBp": {
+      "bp": 500
+     }
+    },
+    "bonus_amount": 38000000,
+    "min_fan_count": 220000,
+    "first_division_only": true
+   },
+   {
+    "id": "skyline_hotel",
+    "name": "Skyline Hotels",
+    "industry": "lifestyle",
+    "tier": "A",
+    "slot": "Sub",
+    "signing_bonus": 56000000,
+    "monthly_amount": 5250000,
+    "bonus_condition": {
+     "LeagueRankAtMost": {
+      "rank": 3
+     }
+    },
+    "bonus_amount": 21000000,
+    "min_fan_count": 170000,
+    "first_division_only": false
+   },
+   {
+    "id": "frostfizz",
+    "name": "FrostFizz",
+    "industry": "beverage",
+    "tier": "A",
+    "slot": "Sub",
+    "signing_bonus": 21000000,
+    "monthly_amount": 5250000,
+    "bonus_condition": {
+     "FanGrowthAtLeastBp": {
+      "bp": 2000
+     }
+    },
+    "bonus_amount": 56000000,
+    "min_fan_count": 150000,
+    "first_division_only": false
+   },
+   {
+    "id": "quantum_card",
+    "name": "QuantumCard",
+    "industry": "finance",
+    "tier": "A",
+    "slot": "Sub",
+    "signing_bonus": 28000000,
+    "monthly_amount": 7000000,
+    "bonus_condition": {
+     "LeagueRankAtMost": {
+      "rank": 2
+     }
+    },
+    "bonus_amount": 28000000,
+    "min_fan_count": 140000,
+    "first_division_only": false
+   },
+   {
+    "id": "lumina_mobile",
+    "name": "Lumina Mobile",
+    "industry": "telecom",
+    "tier": "A",
+    "slot": "Sub",
+    "signing_bonus": 56000000,
+    "monthly_amount": 5250000,
+    "bonus_condition": "InternationalQualified",
+    "bonus_amount": 21000000,
+    "min_fan_count": 130000,
+    "first_division_only": false
+   },
+   {
+    "id": "quickbite",
+    "name": "QuickBite Delivery",
+    "industry": "food",
+    "tier": "B",
+    "slot": "Sub",
+    "signing_bonus": 20000000,
+    "monthly_amount": 5000000,
+    "bonus_condition": {
+     "FanGrowthAtLeastBp": {
+      "bp": 1000
+     }
+    },
+    "bonus_amount": 20000000,
+    "min_fan_count": 90000,
+    "first_division_only": false
+   },
+   {
+    "id": "soundwave",
+    "name": "SoundWave Audio",
+    "industry": "peripherals",
+    "tier": "B",
+    "slot": "Sub",
+    "signing_bonus": 40000000,
+    "monthly_amount": 3750000,
+    "bonus_condition": {
+     "LeagueRankAtMost": {
+      "rank": 2
+     }
+    },
+    "bonus_amount": 15000000,
+    "min_fan_count": 80000,
+    "first_division_only": false
+   },
+   {
+    "id": "northstar_wear",
+    "name": "Northstar Wear",
+    "industry": "lifestyle",
+    "tier": "B",
+    "slot": "Sub",
+    "signing_bonus": 20000000,
+    "monthly_amount": 5000000,
+    "bonus_condition": "DivisionMaintained",
+    "bonus_amount": 20000000,
+    "min_fan_count": 70000,
+    "first_division_only": false
+   },
+   {
+    "id": "redcomet_games",
+    "name": "RedComet Games",
+    "industry": "game",
+    "tier": "B",
+    "slot": "Sub",
+    "signing_bonus": 15000000,
+    "monthly_amount": 3750000,
+    "bonus_condition": {
+     "HomeAttendanceGrowthAtLeastBp": {
+      "bp": 300
+     }
+    },
+    "bonus_amount": 40000000,
+    "min_fan_count": 60000,
+    "first_division_only": false
+   },
+   {
+    "id": "greenleaf",
+    "name": "GreenLeaf Tea",
+    "industry": "beverage",
+    "tier": "C",
+    "slot": "Sub",
+    "signing_bonus": 14000000,
+    "monthly_amount": 3500000,
+    "bonus_condition": {
+     "FanGrowthAtLeastBp": {
+      "bp": 500
+     }
+    },
+    "bonus_amount": 14000000,
+    "min_fan_count": 30000,
+    "first_division_only": false
+   },
+   {
+    "id": "campus_print",
+    "name": "Campus Print",
+    "industry": "retail",
+    "tier": "C",
+    "slot": "Sub",
+    "signing_bonus": 14000000,
+    "monthly_amount": 3500000,
+    "bonus_condition": {
+     "LeagueRankAtMost": {
+      "rank": 4
+     }
+    },
+    "bonus_amount": 14000000,
+    "min_fan_count": 25000,
+    "first_division_only": false
+   },
+   {
+    "id": "metro_courier",
+    "name": "MetroCourier",
+    "industry": "automotive",
+    "tier": "C",
+    "slot": "Sub",
+    "signing_bonus": 14000000,
+    "monthly_amount": 3500000,
+    "bonus_condition": "DivisionMaintained",
+    "bonus_amount": 14000000,
+    "min_fan_count": 20000,
+    "first_division_only": false
+   },
+   {
+    "id": "orbit_learning",
+    "name": "Orbit Learning",
+    "industry": "education",
+    "tier": "C",
+    "slot": "Sub",
+    "signing_bonus": 28000000,
+    "monthly_amount": 2625000,
+    "bonus_condition": "ChampionshipWin",
+    "bonus_amount": 10500000,
+    "min_fan_count": 30000,
+    "first_division_only": false
+   },
+   {
+    "id": "brightdesk",
+    "name": "BrightDesk",
+    "industry": "retail",
+    "tier": "C",
+    "slot": "Sub",
+    "signing_bonus": 10500000,
+    "monthly_amount": 2625000,
+    "bonus_condition": {
+     "HomeAttendanceGrowthAtLeastBp": {
+      "bp": 200
+     }
+    },
+    "bonus_amount": 28000000,
+    "min_fan_count": 20000,
+    "first_division_only": false
+   },
+   {
+    "id": "nightowl",
+    "name": "NightOwl Snacks",
+    "industry": "food",
+    "tier": "D",
+    "slot": "Sub",
+    "signing_bonus": 6000000,
+    "monthly_amount": 2833333.3333333335,
+    "bonus_condition": "None",
+    "bonus_amount": 0,
+    "min_fan_count": 6000,
+    "first_division_only": false
+   },
+   {
+    "id": "twin_keys",
+    "name": "TwinKeys Keyboards",
+    "industry": "peripherals",
+    "tier": "D",
+    "slot": "Sub",
+    "signing_bonus": 16000000,
+    "monthly_amount": 1500000,
+    "bonus_condition": {
+     "FanCountAtLeast": {
+      "count": 12000
+     }
+    },
+    "bonus_amount": 6000000,
+    "min_fan_count": 6000,
+    "first_division_only": false
+   },
+   {
+    "id": "plaza_burger",
+    "name": "Plaza Burger",
+    "industry": "food",
+    "tier": "D",
+    "slot": "Sub",
+    "signing_bonus": 8000000,
+    "monthly_amount": 2000000,
+    "bonus_condition": {
+     "LeagueRankAtMost": {
+      "rank": 5
+     }
+    },
+    "bonus_amount": 8000000,
+    "min_fan_count": 4000,
+    "first_division_only": false
+   },
+   {
+    "id": "cloudnine_clean",
+    "name": "CloudNine Clean",
+    "industry": "lifestyle",
+    "tier": "D",
+    "slot": "Sub",
+    "signing_bonus": 8000000,
+    "monthly_amount": 2000000,
+    "bonus_condition": "DivisionMaintained",
+    "bonus_amount": 8000000,
+    "min_fan_count": 8000,
+    "first_division_only": false
+   },
+   {
+    "id": "pocket_pixel",
+    "name": "PocketPixel",
+    "industry": "game",
+    "tier": "D",
+    "slot": "Sub",
+    "signing_bonus": 6000000,
+    "monthly_amount": 1500000,
+    "bonus_condition": {
+     "FanGrowthAtLeastBp": {
+      "bp": 500
+     }
+    },
+    "bonus_amount": 16000000,
+    "min_fan_count": 12000,
+    "first_division_only": false
+   },
+   {
+    "id": "morning_bus",
+    "name": "MorningBus",
+    "industry": "automotive",
+    "tier": "D",
+    "slot": "Sub",
+    "signing_bonus": 8000000,
+    "monthly_amount": 2000000,
+    "bonus_condition": {
+     "HomeAttendanceGrowthAtLeastBp": {
+      "bp": 100
+     }
+    },
+    "bonus_amount": 8000000,
+    "min_fan_count": 15000,
+    "first_division_only": false
+   }
+  ],
+  "main_slots": 1,
+  "sub_slots": 2,
+  "main_offer_count": 3,
+  "sub_offer_count": 4,
+  "fan_count_soft_cap": 600000,
+  "fan_score_floor_bp": 1500,
+  "first_division_bonus_bp": 1000,
+  "playoff_bonus_bp": 1000,
+  "championship_bonus_bp": 2400,
+  "playoff_rank_cutoff": 4,
+  "tier_score_min_bp": [
+   0,
+   4200,
+   5600,
+   7000,
+   8500
+  ],
+  "runner_up_bonus_bp": 1600,
+  "intl_title_bonus_bp": 2000,
+  "intl_final_bonus_bp": 1200,
+  "intl_entry_bonus_bp": 600,
+  "grade_formula_revision": 1
+ }
+}

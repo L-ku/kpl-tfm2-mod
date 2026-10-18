@@ -1,0 +1,16 @@
+[package]
+name = "kpl-sab"
+version = "0.1.0"
+edition = "2021"
+
+# Stable-ABI mod template. Builds with ANY Rust toolchain (stable or nightly)
+# because only the repr(C) contract crosses the DLL boundary.
+#
+# Build:  cargo build --release
+# Output: target/release/my_stable_mod.dll → copy into mods/<your_mod_id>/
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+mod-api-stable = { path = "../mod-api-stable" }
