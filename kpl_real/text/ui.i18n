@@ -4,7 +4,10 @@
       "tacc": "KPL S",
       "tacc2": "KPL A",
       "tacj": "KPL B",
-      "tacj2": "KGL"
+      "tacj2": "KGL",
+      "kplg1": "KPL Group 1",
+      "kplg2": "KPL Group 2",
+      "kplg3": "KPL Group 3"
     },
     "competition_name": {
       "league": "{League} League",
@@ -30,7 +33,10 @@
       "tacc": "KPL S组",
       "tacc2": "KPL A组",
       "tacj": "KPL B组",
-      "tacj2": "K甲"
+      "tacj2": "K甲",
+      "kplg1": "KPL 一组",
+      "kplg2": "KPL 二组",
+      "kplg3": "KPL 三组"
     },
     "competition_name": {
       "league": "{League}联赛",
@@ -56,7 +62,10 @@
       "tacc": "KPL S組",
       "tacc2": "KPL A組",
       "tacj": "KPL B組",
-      "tacj2": "K甲"
+      "tacj2": "K甲",
+      "kplg1": "KPL 一組",
+      "kplg2": "KPL 二組",
+      "kplg3": "KPL 三組"
     },
     "competition_name": {
       "league": "{League}聯賽",

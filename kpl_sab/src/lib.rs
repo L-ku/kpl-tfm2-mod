@@ -4117,6 +4117,291 @@ fn league_id_by_name(ctx: &StableServerCtx<'_>, name: &str) -> Option<usize> {
     None
 }
 
+// ============================ 每档第一轮抽签 ============================
+// 旧做法：分组在 data_setting 生成时就固定（gen_kpl_mod.js shuffle 一次），
+// 每一档开赛后再也不会重抽。新做法：每档联赛刚建好、一场未打时，在存档里
+// 把 18 支真队随机抽成 3 组 × 6（12 个挂名队 4×3 跟着走），并 push 新闻。
+//   - 新档进档（首个 Spring）抽一次；
+//   - 夏季赛开赛前（6/22 LeagueScheduleCreate{Summer} + StartRecruit 转会期
+//     开始）再抽一次。
+// 幂等：按赛季首场比赛 id 存 `draw_done_*`，只在「三容器前 45 场全都没打」时动作。
+const DRAW_GROUPS: bool = true;
+
+/// 12 个 CN 挂名队（非 KPL 真队），每组固定 4 个，不参与抽签。
+const FILLER_TEAM_NAMES: &[&str] = &[
+    "武汉GK", "深圳TCG", "杭州ZQ", "上海DSM",
+    "南昌RF", "苏州LSG", "厦门VG", "重庆YTG",
+    "成都MT", "南京HZ", "北京SDG", "天津TE",
+];
+
+fn is_filler_team(name: &str) -> bool {
+    FILLER_TEAM_NAMES.contains(&name)
+}
+
+/// 抽签用的小 RNG（xorshift64*）。没有外部 rand 依赖，用系统时间 + 进程 id 播种。
+struct DrawRng(u64);
+
+impl DrawRng {
+    fn new() -> Self {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0x9E37_79B9_7F4A_7C15);
+        Self((nanos ^ ((std::process::id() as u64) << 32) ^ 0x9E37_79B9_7F4A_7C15) | 1)
+    }
+    fn next(&mut self) -> u64 {
+        let mut x = self.0;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.0 = x;
+        x.wrapping_mul(0x2545_F491_4F6C_DD1D)
+    }
+    fn shuffle<T>(&mut self, v: &mut [T]) {
+        for i in (1..v.len()).rev() {
+            let j = (self.next() % (i as u64 + 1)) as usize;
+            v.swap(i, j);
+        }
+    }
+}
+
+/// 10 队单循环（9 轮 × 5 场 = 45 场），K甲 在抽签归位后重排赛程用。
+fn rr_all_pairs(teams: &[usize]) -> Vec<(usize, usize)> {
+    let n = teams.len();
+    if n < 2 || n % 2 != 0 {
+        return Vec::new();
+    }
+    let mut list = teams.to_vec();
+    let mut out = Vec::with_capacity(n * (n - 1) / 2);
+    for _ in 0..n - 1 {
+        for i in 0..n / 2 {
+            out.push((list[i], list[n - 1 - i]));
+        }
+        let last = list.pop().unwrap();
+        list.insert(1, last);
+    }
+    out
+}
+
+/// 改 League.full_name 指向的 i18n key（只动显示名，不动 League.name —— 内部
+/// 识别/杯赛种子都靠 name/region_id）。
+fn set_league_display(ctx: &mut StableServerCtx<'_>, league_name: &str, text_key: &str) {
+    if let Some(lid) = league_id_by_name(ctx, league_name) {
+        let _ = ctx.record_set_string(
+            RecordKindV1::League,
+            lid,
+            "full_name",
+            &format!("#asset/base/text/ui?league.{}", text_key),
+        );
+    }
+}
+
+/// 第一轮：三个容器显示「一组 / 二组 / 三组」。
+fn set_round1_display(ctx: &mut StableServerCtx<'_>) {
+    set_league_display(ctx, "TACC", "kplg1");
+    set_league_display(ctx, "TACC2", "kplg2");
+    set_league_display(ctx, "TACJ", "kplg3");
+}
+
+/// 第二轮起：显示「S组 / A组 / B组」。季后赛名由 i18n 的
+/// competition_name.league_*_playoff = "KPL 季后赛" 统一提供。
+fn set_sab_display(ctx: &mut StableServerCtx<'_>) {
+    set_league_display(ctx, "TACC", "tacc");
+    set_league_display(ctx, "TACC2", "tacc2");
+    set_league_display(ctx, "TACJ", "tacj");
+}
+
+/// 纯显示层同步：按当前轮次把三容器的 `League.full_name` 对齐成
+/// 「一组/二组/三组」（第一轮，<15 场）或「S组/A组/B组」（第二轮起）。
+/// 不改 League.name / 赛区 / 比赛 / 积分，只改 UI 文本引用。
+/// 在开服/读档、每档开赛时调用 —— 即使引擎只在读档时解析一次文本，
+/// 重进存档后显示的也一定是当前轮次该有的名字。
+fn sync_display_names(ctx: &mut StableServerCtx<'_>) {
+    let Some(c) = sab_comps(ctx) else { return };
+    let mut min_played = usize::MAX;
+    for cid in [c.s, c.a, c.b] {
+        let Some(v) = comp_mids(ctx, cid) else { return };
+        let end = v.len().min(45);
+        min_played = min_played.min(rr_played(ctx, &v[..end]));
+    }
+    if min_played >= RR_PER_ROUND {
+        set_sab_display(ctx);
+    } else {
+        set_round1_display(ctx);
+    }
+}
+
+/// 每档联赛刚开始（三容器前 45 场全未打）时抽签：18 真队随机分 3 组 × 6，
+/// 12 挂名队 4×3；写 standings / Team.league_id，重排 K甲（防升降级留下的
+/// 错位），push 新闻。实际上场的 45 场由后面的 make_sab_r6 按新分组重写。
+fn maybe_draw_groups(ctx: &mut StableServerCtx<'_>) {
+    if !DRAW_GROUPS {
+        return;
+    }
+    let Some(c) = sab_comps(ctx) else { return };
+    let cids = [c.s, c.a, c.b];
+    let league_names = ["TACC", "TACC2", "TACJ"];
+    let labels = ["一组", "二组", "三组"];
+    let mut mids: Vec<Vec<usize>> = Vec::new();
+    for &cid in &cids {
+        let Some(v) = comp_mids(ctx, cid) else { return };
+        if v.len() < 45 {
+            return;
+        }
+        if v[..45].iter().any(|m| is_played(ctx, *m)) {
+            return; // 本档已经开打，绝不重抽
+        }
+        mids.push(v);
+    }
+    let season_tag = mids[0][0];
+    let done_key = format!("draw_done_{}", season_tag);
+    if ctx.save_get_string(&done_key).is_some() {
+        return;
+    }
+
+    let mut reals = all_real_kpl_team_ids(ctx);
+    let mut fillers: Vec<usize> = ctx
+        .record_ids(RecordKindV1::Team)
+        .into_iter()
+        .filter(|&t| is_filler_team(&team_name(ctx, t)))
+        .collect();
+    let mut log = String::from("=== KPL 第一轮抽签 ===\n");
+    log.push_str(&format!(
+        "真队 {} 支，挂名队 {} 支（season_tag={}）\n",
+        reals.len(),
+        fillers.len(),
+        season_tag
+    ));
+    if reals.len() != 18 || fillers.len() != 12 {
+        log.push_str("SKIP：需要 18 真队 + 12 挂名队\n");
+        let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_draw.txt", &log);
+        return;
+    }
+
+    let mut rng = DrawRng::new();
+    rng.shuffle(&mut reals);
+    rng.shuffle(&mut fillers);
+
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    let mut fgroups: Vec<Vec<usize>> = Vec::new();
+    for i in 0..3 {
+        groups.push(reals[i * 6..i * 6 + 6].to_vec());
+        fgroups.push(fillers[i * 4..i * 4 + 4].to_vec());
+    }
+
+    // ① 每个容器 standings = 6 真 + 4 挂，并更新 Team.league_id。
+    for i in 0..3 {
+        let mut rows = groups[i].clone();
+        rows.extend_from_slice(&fgroups[i]);
+        let st_ok = write_standings_raw(ctx, cids[i], &rows);
+        let mut moved = 0usize;
+        if let Some(lid) = league_id_by_name(ctx, league_names[i]) {
+            for &t in &rows {
+                if ctx.record_set_json(RecordKindV1::Team, t, "league_id", &lid.to_string()) {
+                    moved += 1;
+                }
+            }
+        }
+        log.push_str(&format!(
+            "{}：{}（standings={}，league_id {}/10）\n",
+            labels[i],
+            team_names(ctx, &groups[i]),
+            st_ok,
+            moved
+        ));
+    }
+
+    // ② K甲 归位：引擎原生升降级可能把真队降进 K甲、把青训队升进 S/A/B。
+    //    凡是既不是 18 真队、也不是 12 挂名队的 CN 队，一律放回 K甲。
+    let cn_lids: Vec<usize> = ["TACC", "TACC2", "TACJ", "TACJ2"]
+        .iter()
+        .filter_map(|n| league_id_by_name(ctx, n))
+        .collect();
+    let kgl_lid = league_id_by_name(ctx, "TACJ2");
+    let assigned: HashSet<usize> = reals.iter().chain(fillers.iter()).copied().collect();
+    let mut back = 0usize;
+    if let Some(kgl_lid) = kgl_lid {
+        for t in ctx.record_ids(RecordKindV1::Team) {
+            if assigned.contains(&t) {
+                continue;
+            }
+            let lid = ctx
+                .record_get_json(RecordKindV1::Team, t, "league_id")
+                .and_then(|j| j.trim().parse::<usize>().ok());
+            if lid.map(|l| cn_lids.contains(&l)).unwrap_or(false) {
+                let name = team_name(ctx, t);
+                if !is_real_kpl(&name) && !is_filler_team(&name) {
+                    let _ = ctx
+                        .record_set_json(RecordKindV1::Team, t, "league_id", &kgl_lid.to_string());
+                    back += 1;
+                }
+            }
+        }
+    }
+    log.push_str(&format!("K甲 归位 {} 队\n", back));
+
+    // ③ K甲 的 standings / 赛程也按归位后的 10 队重写（若发生过升降级，原
+    //    competition 里可能混进真队/丢了青训队）。
+    for cid in cn_d1_competitions(ctx) {
+        if comp_league_name(ctx, cid).as_deref() != Some("TACJ2") {
+            continue;
+        }
+        let Some(kgl_lid) = kgl_lid else { break };
+        let mut kgl: Vec<usize> = ctx
+            .record_ids(RecordKindV1::Team)
+            .into_iter()
+            .filter(|&t| {
+                !is_real_kpl(&team_name(ctx, t))
+                    && !is_filler_team(&team_name(ctx, t))
+                    && ctx
+                        .record_get_json(RecordKindV1::Team, t, "league_id")
+                        .and_then(|j| j.trim().parse::<usize>().ok())
+                        == Some(kgl_lid)
+            })
+            .collect();
+        kgl.sort_unstable();
+        if kgl.len() == 10 {
+            let st_ok = write_standings_raw(ctx, cid, &kgl);
+            let mut ok = 0usize;
+            if let Some(m) = comp_mids(ctx, cid) {
+                for (k, &(a, b)) in rr_all_pairs(&kgl).iter().enumerate().take(45) {
+                    if k < m.len() && set_match_teams(ctx, m[k], a, b) {
+                        ok += 1;
+                    }
+                }
+            }
+            log.push_str(&format!("K甲 standings={} 赛程={}/45\n", st_ok, ok));
+        } else {
+            log.push_str(&format!("K甲 SKIP：队数 {}\n", kgl.len()));
+        }
+        break;
+    }
+
+    // ④ 第一轮显示名 + 新闻（全体 18 真队）。
+    set_round1_display(ctx);
+    let ty = ctx
+        .record_get_string(RecordKindV1::LeagueCompetition, c.s, "league_type")
+        .unwrap_or_default();
+    let split = if ty.to_lowercase().contains("summer") {
+        "夏季赛"
+    } else {
+        "春季赛"
+    };
+    let title = format!("KPL {}第一轮抽签", split);
+    let mut content = format!("KPL {}第一轮抽签结果（每组 6 队，组内单循环）：\n", split);
+    for i in 0..3 {
+        let names: Vec<String> = groups[i].iter().map(|&t| team_name(ctx, t)).collect();
+        content.push_str(&format!("{}：{}\n", labels[i], names.join("、")));
+    }
+    content.push_str("第一轮结束后按名次重新分为 S组 / A组 / B组。\n");
+    for tid in all_real_kpl_team_ids(ctx) {
+        ctx.news_push(tid, &title, &content, "KPL");
+    }
+    log.push_str(&content);
+    ctx.save_set_string(&done_key, "1");
+    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_draw.txt", &log);
+}
+
 /// 取 standings 里某队的**原始成绩对象**（保留 kill/death/assist 等所有字段，
 /// 重新写回时不会丢统计）。
 fn standings_entry_json(json: &str, tid: usize) -> Option<String> {
@@ -5161,6 +5446,8 @@ fn maybe_regroup(ctx: &mut StableServerCtx<'_>) {
         if round == 1 {
             let hidden = mark_practice_slots(ctx, &mids, RR_PER_ROUND);
             log.push_str(&format!("第一轮 0-14 槽位标练习赛：{} 场\n", hidden));
+            // 第一轮结束 → 显示名从「一组/二组/三组」切回「S组/A组/B组」。
+            set_sab_display(ctx);
         }
         // 每轮新分组 push 成新闻（跟赛季初抽签一样，所有 CN 队伍都收到）
         notify_regroup(ctx, round, &groups);
@@ -5271,48 +5558,6 @@ fn notify_regroup(
     }
 }
 
-/// 游戏内提示：把 S/A/B 第一轮分组 push 成新闻（只列 6 真队，不列挂名队）。
-fn notify_sab(ctx: &mut StableServerCtx<'_>) {
-    let comps = cn_d1_competitions(ctx);
-    if comps.is_empty() {
-        return;
-    }
-    let mut draw = String::from("KPL 第一轮分组：\n");
-    let mut kgl = String::new();
-    let mut all_teams: Vec<usize> = Vec::new();
-    for &cid in &comps {
-        let label = cn_comp_label(ctx, cid);
-        let json = ctx
-            .record_get_json(RecordKindV1::LeagueCompetition, cid, "standings")
-            .unwrap_or_default();
-        let mut rows = parse_standings(&json);
-        rows.sort_by_key(|r| r.team);
-        if label == "K甲" {
-            let names: Vec<String> = rows.iter().map(|r| team_name(ctx, r.team)).collect();
-            kgl = format!("K甲（固定次级，不参与抽签）：{}\n", names.join("、"));
-            all_teams.extend(rows.iter().map(|r| r.team));
-        } else {
-            let names: Vec<String> = rows
-                .iter()
-                .filter(|r| is_real_kpl(&team_name(ctx, r.team)))
-                .map(|r| team_name(ctx, r.team))
-                .collect();
-            draw.push_str(&format!("{}：{}\n", label, names.join("、")));
-            all_teams.extend(
-                rows.iter()
-                    .filter(|r| is_real_kpl(&team_name(ctx, r.team)))
-                    .map(|r| r.team),
-            );
-        }
-    }
-    let content = format!("{}{}", draw, kgl);
-    all_teams.sort_unstable();
-    all_teams.dedup();
-    for tid in all_teams {
-        ctx.news_push(tid, "KPL 第一轮分组", &content, "KPL");
-    }
-}
-
 /// 每赛季轮换时：记上赛季名次 + dump 当前分组（按 league_type 每季一次）。
 fn maybe_sab_seed(ctx: &mut StableServerCtx<'_>) {
     let comps = cn_d1_competitions(ctx);
@@ -5328,7 +5573,7 @@ fn maybe_sab_seed(ctx: &mut StableServerCtx<'_>) {
     }
     record_last_season(ctx);
     dump_sab(ctx);
-    notify_sab(ctx);
+    // 第一轮分组的新闻改由 maybe_draw_groups 用「一组/二组/三组」推送。
     ctx.save_set_string("sab_seed_type", &ty);
 }
 
@@ -5347,6 +5592,10 @@ impl StableServerExtension for KplNaming {
         dump_athletes(ctx);
         set_bo(ctx);
         zero_ab_prizes(ctx);
+        // 新档进档：本档还没开打就抽签（18 真队随机分一组/二组/三组）。
+        maybe_draw_groups(ctx);
+        // 显示层：读档时按当前轮次对齐「一组/二组/三组」或「S/A/B」。
+        sync_display_names(ctx);
         make_single_rr(ctx);
         make_sab_r6(ctx);
         strip_fillers_all(ctx);
@@ -5402,6 +5651,9 @@ impl StableServerExtension for KplNaming {
                     maybe_sab_seed(ctx);
                     set_bo(ctx);
                     zero_ab_prizes(ctx);
+                    // 每档联赛刚建好（含 6/22 夏季赛 = 转会期开始）：抽签 + push。
+                    maybe_draw_groups(ctx);
+                    sync_display_names(ctx);
                     make_single_rr(ctx);
                     make_sab_r6(ctx);
                     strip_fillers_all(ctx);
