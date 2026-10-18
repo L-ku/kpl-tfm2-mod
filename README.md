@@ -9,6 +9,11 @@
 
 两个包建议同时启用。只装 `kpl_real` 是换皮；只装 `kpl_sab` 会得到 KPL 赛制但队名仍是原版。
 
+## Steam 创意工坊
+
+- KPL SAB 赛制（原生 mod）：https://steamcommunity.com/sharedfiles/filedetails/?id=3822163110
+- KPL + Real LoL Teams（数据包）：https://steamcommunity.com/sharedfiles/filedetails/?id=3822160023
+
 ## 赛制
 
 - **S/A/B 三组**，每组 6 队；第一轮分组沿用引擎的升降级结果，之后按每轮名次重排。
