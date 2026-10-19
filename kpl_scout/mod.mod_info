@@ -1,11 +1,11 @@
 {
   "name": "Chief Scout 找球员 / Best Player Finder",
   "author": "L-ku",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "mod_type": "native",
   "contains_code": true,
   "description": "替代已失效的 Chief Scout 选人 mod。在底部栏空白处新增「Chief Scout」按钮（不覆盖任何原版按钮），打开选人面板：全部 / 自由球员 / 转会 / 升级 / 本队五个页签，按对抗路 / 打野 / 中路 / 发育路 / 游走评分排序，支持潜力、年龄、仅升级筛选，表格分页与选中球员详情卡（评分、提升值、原因、标签）。潜力取球员真实隐藏潜力；自由球员按合同判定。详情卡里的「打开 Solo Rank」会弹出资料卡：Solo Rank 评分、胜负战绩、赛区中文名、隐藏潜力与年龄，以及熟练度最高的 3 个英雄的头像、中文名和熟练度。\n\nA working replacement for the outdated Chief Scout mod. Adds a \"Chief Scout\" button in the empty middle of the bottom bar and opens a scouting panel with five tabs, role-aware scores, potential/age/upgrade filters, paging, a selected-player card, and a Solo Rank card showing rating, record, region, hidden potential, age, and the top-3 champions with face icons and Chinese names. Built with the stable mod SDK; the executable is never patched.",
-  "last_updated": "2026-10-18",
+  "last_updated": "2026-10-19",
   "dependencies": [
     {
       "mod_id": "base",

@@ -14,8 +14,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use mod_api_stable::{
-    declare_stable_mod, LogLevel, RecordKindV1, SceneKindV1, StableClient, StableExtension,
-    StableHost, StableMod, UiEventKindV1,
+    declare_stable_mod, ClientSceneKindV1, LogLevel, RecordKindV1, SceneKindV1, StableClient,
+    StableExtension, StableHost, StableMod, UiEventKindV1,
 };
 
 const MOD_ID: &str = "kpl_scout";
@@ -218,7 +218,41 @@ fn tick(ctx: &mut StableClient<'_>, st: &Arc<Mutex<State>>) {
         return;
     }
 
+    // The management UI (including our button) stays alive behind the match
+    // screens, so the button used to be visible while playing a match. Hide it
+    // and close the panel on every match-flow screen.
+    let in_match = matches!(
+        ctx.client_scene_kind(),
+        Some(ClientSceneKindV1::Match)
+            | Some(ClientSceneKindV1::MatchResult)
+            | Some(ClientSceneKindV1::InGame)
+            | Some(ClientSceneKindV1::SetFeedback)
+            | Some(ClientSceneKindV1::LockerRoom)
+    );
+    if in_match {
+        let was_open = {
+            let mut s = st.lock().unwrap();
+            let was_open = s.open;
+            s.open = false;
+            s.sr_open = false;
+            s.sr_want = false;
+            was_open
+        };
+        if was_open && ctx.ui_exists(PANEL_PATH) {
+            ctx.ui_set_visible(PANEL_PATH, false);
+        }
+        if ctx.ui_exists(BTN_PATH) {
+            ctx.ui_set_visible(BTN_PATH, false);
+        }
+        return;
+    }
+
     ensure_ui(ctx, st);
+
+    // Back on a management screen: make sure a previously hidden button shows.
+    if ctx.ui_visible(BTN_PATH) == Some(false) {
+        ctx.ui_set_visible(BTN_PATH, true);
+    }
 
     // Keyboard fallback: the panel can always be toggled with F7 even if a
     // hover/click slot is unavailable on the host build.
