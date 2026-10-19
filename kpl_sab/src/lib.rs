@@ -178,15 +178,6 @@ impl Lane {
             Lane::Support => "stat.support",
         }
     }
-    fn label(self) -> &'static str {
-        match self {
-            Lane::Top => "对抗路",
-            Lane::Jungle => "打野",
-            Lane::Mid => "中路",
-            Lane::Bottom => "发育路",
-            Lane::Support => "游走",
-        }
-    }
     fn style(self) -> [(&'static str, i64); 12] {
         match self {
             Lane::Top => [
@@ -582,12 +573,35 @@ fn league_regions(ctx: &mut StableServerCtx<'_>) -> HashMap<usize, i64> {
     m
 }
 
+/// 预扫描所有 Team：team_id -> Some((是否中国赛区, 队名))。
+/// 一次 O(队伍数) 的读取，替代每个选手各查两遍 Team 记录。
+fn cn_team_table(
+    ctx: &StableServerCtx<'_>,
+    lg: &HashMap<usize, i64>,
+) -> HashMap<usize, Option<(bool, String)>> {
+    let mut m = HashMap::new();
+    for tid in ctx.record_ids(RecordKindV1::Team) {
+        let entry = ctx
+            .record_get_json(RecordKindV1::Team, tid, "league_id")
+            .and_then(|s| s.parse::<usize>().ok())
+            .and_then(|lid| lg.get(&lid).copied())
+            .map(|region| {
+                let name = ctx
+                    .record_get_string(RecordKindV1::Team, tid, "name")
+                    .unwrap_or_default();
+                (region == 1 || region == 5, name)
+            });
+        m.insert(tid, entry);
+    }
+    m
+}
+
 /// 中国赛区归属：`None` = 不是中国赛区；`Some("")` = 中国赛区的自由球员；
 /// `Some(队名)` = 中国赛区某支队伍的选手。region 1 = 中国，region 5 = 原日本
 /// 赛区（本 mod 里被改成了 B 组 / K 甲）。
 fn cn_team_of(
-    ctx: &mut StableServerCtx<'_>,
-    lg: &HashMap<usize, i64>,
+    ctx: &StableServerCtx<'_>,
+    teams: &HashMap<usize, Option<(bool, String)>>,
     id: usize,
 ) -> Option<String> {
     let tid = ctx
@@ -595,17 +609,8 @@ fn cn_team_of(
         .and_then(|s| s.parse::<usize>().ok());
     match tid {
         Some(tid) => {
-            let lid = ctx
-                .record_get_json(RecordKindV1::Team, tid, "league_id")
-                .and_then(|s| s.parse::<usize>().ok())?;
-            let &region = lg.get(&lid)?;
-            if region != 1 && region != 5 {
-                return None;
-            }
-            Some(
-                ctx.record_get_string(RecordKindV1::Team, tid, "name")
-                    .unwrap_or_default(),
-            )
+            let (in_cn, name) = teams.get(&tid)?.as_ref()?;
+            in_cn.then(|| name.clone())
         }
         // 自由球员没有球队，用 Solo Rank 所在赛区判断是不是中国赛区。
         None => {
@@ -627,6 +632,7 @@ fn rename_cn_all(ctx: &mut StableServerCtx<'_>) {
     // 已经是唯一中文名的会保持原样，所以重复执行是安全的。
 
     let lg_region = league_regions(ctx);
+    let teams = cn_team_table(ctx, &lg_region);
     let curated: HashSet<&str> = CN_NAMES.iter().copied().collect();
 
     struct Row {
@@ -646,7 +652,7 @@ fn rename_cn_all(ctx: &mut StableServerCtx<'_>) {
         let Some(name) = ctx.record_get_string(RecordKindV1::Athlete, id, "name") else {
             continue;
         };
-        let Some(team) = cn_team_of(ctx, &lg_region, id) else {
+        let Some(team) = cn_team_of(ctx, &teams, id) else {
             kept.insert(name);
             continue;
         };
@@ -694,52 +700,6 @@ fn rename_cn_all(ctx: &mut StableServerCtx<'_>) {
     }
 }
 
-fn dump_athletes(ctx: &mut StableServerCtx<'_>) {
-    let mut by_team: HashMap<String, Vec<String>> = HashMap::new();
-    for id in ctx.record_ids(RecordKindV1::Athlete) {
-        let name = ctx.record_get_string(RecordKindV1::Athlete, id, "name").unwrap_or_else(|| "?".into());
-        let Some(team) = team_name_of(ctx, id) else { continue };
-        // v2：按队名（roster_for）筛，而不是 region_id —— B 组 6 队是 region 5。
-        if roster_for(&team).is_none() {
-            continue;
-        }
-        let lane = lane_of(ctx, id);
-        let ovr = ctx.athlete_get_i64(id, lane.stat_path()).unwrap_or(0);
-        let entry = format!("{}[{} {}]", name, lane.label(), ovr);
-        by_team.entry(team).or_default().push(entry);
-    }
-    let mut out = String::from("=== China athlete names by team ===\n");
-    let mut teams: Vec<(&String, &Vec<String>)> = by_team.iter().collect();
-    teams.sort_by(|a, b| a.0.cmp(b.0));
-    for (t, names) in teams {
-        let mut sorted = names.clone();
-        sorted.sort();
-        let dup = sorted.windows(2).filter(|w| w[0] == w[1]).count();
-        out.push_str(&format!("{} ({}): {}  [dup={}]\n", t, names.len(), names.join(", "), dup));
-    }
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_athletes.txt", &out);
-}
-
-fn dump_structure(ctx: &mut StableServerCtx<'_>) {
-    let mut out = String::new();
-    for (kind, label) in [
-        (RecordKindV1::YearSchedule, "YearSchedule"),
-        (RecordKindV1::LeagueCompetition, "LeagueCompetition"),
-        (RecordKindV1::TournamentCompetition, "TournamentCompetition"),
-        (RecordKindV1::Match, "Match"),
-    ] {
-        let ids = ctx.record_ids(kind);
-        out.push_str(&format!("\n===== {} ({} records) =====\n", label, ids.len()));
-        let take = if label == "Match" { ids.iter().take(8).collect::<Vec<_>>() } else { ids.iter().collect::<Vec<_>>() };
-        for id in take {
-            if let Some(json) = ctx.record_get_json(kind, *id, "") {
-                out.push_str(&format!("-- id {} --\n{}\n", id, json));
-            }
-        }
-    }
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_struct.txt", &out);
-}
-
 fn parse_ids(json: &str) -> Vec<usize> {
     json.split(|c: char| !c.is_ascii_digit())
         .filter(|s| !s.is_empty())
@@ -752,14 +712,24 @@ fn set_bo(ctx: &mut StableServerCtx<'_>) {
     for cid in ctx.record_ids(RecordKindV1::LeagueCompetition) {
         if let Some(m) = ctx.record_get_json(RecordKindV1::LeagueCompetition, cid, "matches") {
             for mid in parse_ids(&m) {
-                ctx.record_set_json(RecordKindV1::Match, mid, "need_win", "3");
+                set_need_win(ctx, mid, "3");
             }
         }
         if let Some(p) = ctx.record_get_json(RecordKindV1::LeagueCompetition, cid, "playoffs") {
             for mid in parse_ids(&p) {
-                ctx.record_set_json(RecordKindV1::Match, mid, "need_win", "4");
+                set_need_win(ctx, mid, "4");
             }
         }
+    }
+}
+
+/// 只在值确实不同时写，避免每次读档把所有比赛记录都标脏。
+fn set_need_win(ctx: &mut StableServerCtx<'_>, mid: usize, want: &str) {
+    let cur = ctx
+        .record_get_json(RecordKindV1::Match, mid, "need_win")
+        .unwrap_or_default();
+    if cur.trim() != want {
+        ctx.record_set_json(RecordKindV1::Match, mid, "need_win", want);
     }
 }
 
@@ -1035,17 +1005,6 @@ fn comp_league_name(ctx: &StableServerCtx<'_>, cid: usize) -> Option<String> {
     None
 }
 
-/// 根据 competition 所属联赛名，返回分组标签（S组/A组/B组/K甲）。
-fn cn_comp_label(ctx: &StableServerCtx<'_>, cid: usize) -> &'static str {
-    match comp_league_name(ctx, cid).as_deref() {
-        Some("TACC") => "S组",
-        Some("TACC2") => "A组",
-        Some("TACJ") => "B组",
-        Some("TACJ2") => "K甲",
-        _ => "?",
-    }
-}
-
 /// 把上赛季（finalized 的 CN D1 competition）最终名次存到 mod 存档命名空间，
 /// 供下赛季分组用。名次 = S组排序 + A组排序 + B组排序（competition id 升序 = S/A/B）。
 fn record_last_season(ctx: &mut StableServerCtx<'_>) {
@@ -1086,190 +1045,6 @@ fn team_name(ctx: &StableServerCtx<'_>, tid: usize) -> String {
         .unwrap_or_else(|| format!("#{}", tid))
 }
 
-fn dump_sab(ctx: &StableServerCtx<'_>) {
-    let comps = cn_d1_competitions(ctx);
-    let mut out = String::from("=== CN SAB 分组 + K甲 ===\n");
-    if comps.is_empty() {
-        out.push_str("(no CN competitions)\n");
-    }
-    for &cid in &comps {
-        let label = cn_comp_label(ctx, cid);
-        let json = ctx
-            .record_get_json(RecordKindV1::LeagueCompetition, cid, "standings")
-            .unwrap_or_default();
-        let mut rows = parse_standings(&json);
-        rows.sort_by_key(|r| r.team);
-        let names: Vec<String> = rows
-            .iter()
-            .map(|r| format!("{}#{}({}-{})", team_name(ctx, r.team), r.team, r.win, r.lose))
-            .collect();
-        out.push_str(&format!("{} (comp{}): {}\n", label, cid, names.join(", ")));
-    }
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_groups.txt", &out);
-}
-
-/// 调查用 dump：所有 League 完整 JSON（region_id/division/competitions 都在里面）+ 所有
-/// Team 的 name/league_id。用来核对升降级配对（同 region 的 div0↔div1）和赛季末各队归属
-/// —— A↔B「路2 手动搬队」要先知道引擎怎么改 league_id，以及配对是不是硬编码 region+division。
-fn dump_leagues_teams(ctx: &StableServerCtx<'_>) {
-    let mut out = String::from("===== League records (full JSON) =====\n");
-    for lid in ctx.record_ids(RecordKindV1::League) {
-        let json = ctx
-            .record_get_json(RecordKindV1::League, lid, "")
-            .unwrap_or_else(|| "?".into());
-        out.push_str(&format!("-- League id {} --\n{}\n", lid, json));
-    }
-    out.push_str("\n===== Team records (name / league_id) =====\n");
-    for tid in ctx.record_ids(RecordKindV1::Team) {
-        let name = ctx
-            .record_get_string(RecordKindV1::Team, tid, "name")
-            .unwrap_or_else(|| "?".into());
-        let league = ctx
-            .record_get_json(RecordKindV1::Team, tid, "league_id")
-            .unwrap_or_else(|| "?".into());
-        out.push_str(&format!("Team {} name={} league={}\n", tid, name, league));
-    }
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_leagues.txt", &out);
-}
-
-/// 调查用 dump：promotion_series（升降级附加赛）+ TournamentCompetition（杯赛抽签）。
-/// 升/降级后赛季已 finalize，promotion_series 落在 **finalized** 的 comp 里，所以
-/// finalized + 未 finalized 都要看（cn_d1_competitions 只返回未 finalize 的，会漏）。
-fn dump_promotion_cup(ctx: &StableServerCtx<'_>) {
-    let mut out = String::new();
-    let mut notable = false;
-    let mut comps = cn_d1_finalized_competitions(ctx);
-    comps.extend(cn_d1_competitions(ctx));
-    comps.sort_unstable();
-    comps.dedup();
-    for &cid in &comps {
-        let label = cn_comp_label(ctx, cid);
-        let fin = ctx
-            .record_get_json(RecordKindV1::LeagueCompetition, cid, "finalized")
-            .map(|s| s.trim() == "true")
-            .unwrap_or(false);
-        let ps = ctx
-            .record_get_json(RecordKindV1::LeagueCompetition, cid, "promotion_series")
-            .unwrap_or_else(|| "?".into());
-        out.push_str(&format!("CN comp {} [{}] finalized={} promotion_series: {}\n", cid, label, fin, ps));
-        if ps != "[]" || fin {
-            notable = true;
-        }
-        if let Some(pf) =
-            ctx.record_get_json(RecordKindV1::LeagueCompetition, cid, "promotion_series_finalized")
-        {
-            out.push_str(&format!("CN comp {} [{}] promotion_series_finalized: {}\n", cid, label, pf));
-        }
-    }
-    let tournaments = ctx.record_ids(RecordKindV1::TournamentCompetition);
-    if !tournaments.is_empty() {
-        notable = true;
-    }
-    if notable {
-        out.push_str("\n===== CN LeagueCompetition (full) =====\n");
-        for &cid in &comps {
-            let json = ctx
-                .record_get_json(RecordKindV1::LeagueCompetition, cid, "")
-                .unwrap_or_else(|| "?".into());
-            out.push_str(&format!("-- comp {} [{}] --\n{}\n", cid, cn_comp_label(ctx, cid), json));
-        }
-    }
-    out.push_str("\n===== TournamentCompetition =====\n");
-    for tid in tournaments {
-        if let Some(json) = ctx.record_get_json(RecordKindV1::TournamentCompetition, tid, "") {
-            out.push_str(&format!("-- id {} --\n{}\n", tid, json));
-        }
-    }
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_promotion_cup.txt", &out);
-}
-
-/// 每天管理 tick 开始前落一份全量快照。国际杯抽签（5/4）崩在引擎内部，游戏日志
-/// 里看不到抽签前各联赛的状态；这份文件记录引擎当时看到的 finalized / 积分表
-/// 行数 / 季后赛槽数 / 已生成的 Tournament(Competition)，方便定位。
-fn dump_predraw(ctx: &StableServerCtx<'_>) {
-    let mut out = String::from("=== pre-tick snapshot ===\n");
-    let mut comps = ctx.record_ids(RecordKindV1::LeagueCompetition);
-    comps.sort_unstable();
-    for cid in comps {
-        let name = comp_league_name(ctx, cid).unwrap_or_else(|| "?".into());
-        let fin = ctx
-            .record_get_json(RecordKindV1::LeagueCompetition, cid, "finalized")
-            .unwrap_or_else(|| "?".into());
-        let po = comp_playoff_ids(ctx, cid).map(|v| v.len()).unwrap_or(0);
-        let rows = standings_ranked(ctx, cid);
-        out.push_str(&format!(
-            "comp {} [{}] finalized={} rows={} playoffs={}\n",
-            cid,
-            name,
-            fin,
-            rows.len(),
-            po
-        ));
-        for (i, r) in rows.iter().enumerate() {
-            out.push_str(&format!(
-                "  {}. {}#{} {}-{} set {}-{}\n",
-                i + 1,
-                team_name(ctx, r.team),
-                r.team,
-                r.win,
-                r.lose,
-                r.set_win,
-                r.set_lose
-            ));
-        }
-        // 季后赛槽位的**原始**队伍引用：引擎 finalize 算名次时看到的就是这些。
-        // CompetitionRank/LeagueRank 这类引用说明槽位还没落到具体队伍。
-        if let Some(po) = comp_playoff_ids(ctx, cid) {
-            for (i, mid) in po.iter().enumerate() {
-                let st = ctx
-                    .record_get_json(RecordKindV1::Match, *mid, "running_state")
-                    .unwrap_or_default();
-                out.push_str(&format!(
-                    "  po[{}] #{} {} | {} vs {}\n",
-                    i,
-                    mid,
-                    if st.contains("End") { "End" } else { "Wait" },
-                    ctx.record_get_json(RecordKindV1::Match, *mid, "team1")
-                        .unwrap_or_default(),
-                    ctx.record_get_json(RecordKindV1::Match, *mid, "team2")
-                        .unwrap_or_default(),
-                ));
-            }
-        }
-    }
-    let mut tids = ctx.record_ids(RecordKindV1::Tournament);
-    tids.sort_unstable();
-    for tid in tids {
-        out.push_str(&format!(
-            "Tournament {} {}\n",
-            tid,
-            ctx.record_get_json(RecordKindV1::Tournament, tid, "")
-                .unwrap_or_default()
-        ));
-    }
-    let mut tcs = ctx.record_ids(RecordKindV1::TournamentCompetition);
-    tcs.sort_unstable();
-    for id in tcs {
-        out.push_str(&format!(
-            "TournamentCompetition {} {}\n",
-            id,
-            ctx.record_get_json(RecordKindV1::TournamentCompetition, id, "")
-                .unwrap_or_default()
-        ));
-    }
-    let mut lids = ctx.record_ids(RecordKindV1::League);
-    lids.sort_unstable();
-    for lid in lids {
-        out.push_str(&format!(
-            "League {} {}\n",
-            lid,
-            ctx.record_get_json(RecordKindV1::League, lid, "")
-                .unwrap_or_default()
-        ));
-    }
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_predraw.txt", &out);
-}
-
 // ============================ 内存扫描：国际杯种子分配表 ============================
 // 引擎抽国际杯时从 world+0x169a8 的 Vec<InternationalSeedAllocation> 读种子槽：
 // 结构体 0x58 字节，+0x00/+0x18/+0x30 是三组 {cap,ptr,len}，+0x48 赛区，+0x50 赛事类型。
@@ -1277,23 +1052,9 @@ fn dump_predraw(ctx: &StableServerCtx<'_>) {
 // tournament.rs:1494 越界崩。稳定 SDK 不暴露 world，只能直接扫本进程堆内存找出这张表，
 // 确认到底哪些赛区/名次没取到队伍。
 mod seedscan {
-    #[repr(C)]
-    struct Mbi {
-        base: usize,
-        alloc_base: usize,
-        alloc_protect: u32,
-        partition_id: u16,
-        _pad0: u16,
-        region_size: usize,
-        state: u32,
-        protect: u32,
-        ty: u32,
-        _pad1: u32,
-    }
 
     #[link(name = "kernel32")]
     extern "system" {
-        fn VirtualQuery(lp_address: *const core::ffi::c_void, buf: *mut Mbi, len: usize) -> usize;
         fn GetCurrentProcess() -> *mut core::ffi::c_void;
         fn ReadProcessMemory(
             h_process: *mut core::ffi::c_void,
@@ -1304,50 +1065,6 @@ mod seedscan {
         ) -> i32;
     }
 
-    const MEM_COMMIT: u32 = 0x1000;
-    const MEM_PRIVATE: u32 = 0x20000;
-    const PAGE_GUARD: u32 = 0x100;
-    const PAGE_NOACCESS: u32 = 0x01;
-    const MAX_ELEMS: u64 = 64;
-    // 上一版这里跳过 >768MB 的块，结果只在 1.7GB 的堆里扫到零碎对象、没抓到种子表。
-    // 现在只排除荒谬大小的块（>4GB），其余全扫。
-    const SKIP_REGION_BIGGER: usize = 0x1_0000_0000;
-    const CHUNK: usize = 0x10_0000; // 每次 RPM 读 1 MB
-    const OVERLAP: usize = 0x1000; // 块间重叠，避免结构体/run 跨块漏掉
-
-    // 只可执行（PAGE_EXECUTE=0x10）的页不可读。之前直接解引用堆内存就可能读到这种页，
-    // 读档瞬间 AV 闪退（kpl_sab.dll+0x4a701）。现在所有内存访问都走 ReadProcessMemory，
-    // 读失败只返回错误，绝不会抛异常。
-    fn readable(protect: u32) -> bool {
-        if protect & (PAGE_GUARD | PAGE_NOACCESS) != 0 {
-            return false;
-        }
-        matches!(protect & 0xff, 0x02 | 0x04 | 0x08 | 0x20 | 0x40 | 0x80)
-    }
-
-    fn map_regions() -> Vec<(usize, usize)> {
-        let mut out = Vec::new();
-        let mut addr: usize = 0x10000;
-        let mut mbi: Mbi = unsafe { core::mem::zeroed() };
-        let mbi_len = core::mem::size_of::<Mbi>();
-        while addr < 0x0000_7fff_ffff_0000 {
-            let n = unsafe {
-                VirtualQuery(addr as *const core::ffi::c_void, &mut mbi, mbi_len)
-            };
-            if n == 0 || mbi.region_size == 0 {
-                break;
-            }
-            let end = mbi.base.saturating_add(mbi.region_size);
-            if end <= addr {
-                break;
-            }
-            if mbi.state == MEM_COMMIT && mbi.ty == MEM_PRIVATE && readable(mbi.protect) {
-                out.push((mbi.base, end));
-            }
-            addr = end;
-        }
-        out
-    }
 
     /// 读本进程内存；失败返回 false（ReadProcessMemory 不会抛异常）。
     pub fn rpm(addr: usize, dst: &mut [u8]) -> bool {
@@ -1370,13 +1087,6 @@ mod seedscan {
         ok != 0 && got == dst.len()
     }
 
-    /// 从已读进缓冲区的字节里取 u64（缓冲区是自己的内存，绝对安全）。
-    #[inline]
-    fn g64(buf: &[u8], off: usize) -> u64 {
-        let mut b = [0u8; 8];
-        b.copy_from_slice(&buf[off..off + 8]);
-        u64::from_le_bytes(b)
-    }
 
     pub fn rdu64(addr: usize) -> Option<u64> {
         let mut b = [0u8; 8];
@@ -1396,388 +1106,14 @@ mod seedscan {
         }
     }
 
-    pub struct Alloc {
-        pub region: u64,
-        pub ty: u8,
-        pub vecs: [Vec<(u64, u64, u64)>; 3],
-    }
-
-    /// 只用已读进缓冲区的 0x58 字节判断结构体；vec 里的元素再单独用 RPM 读。
-    fn parse(buf: &[u8], off: usize) -> Option<Alloc> {
-        if off + 0x58 > buf.len() {
-            return None;
-        }
-        let region = g64(buf, off + 0x48);
-        let ty = buf[off + 0x50];
-        // region 是从打包 id 右移 13 位得来的，不一定是 0..7 的小数字，放宽到 23 位。
-        if region > 0x7f_ffff || ty > 15 {
-            return None;
-        }
-        let mut vecs: [Vec<(u64, u64, u64)>; 3] = [Vec::new(), Vec::new(), Vec::new()];
-        for i in 0..3 {
-            let o = off + i * 0x18;
-            let cap = g64(buf, o);
-            let ptr = g64(buf, o + 8);
-            let len = g64(buf, o + 0x10);
-            if len > MAX_ELEMS || cap > 0x1_0000 || cap < len {
-                return None;
-            }
-            if len > 0 {
-                let bytes = (len as usize).checked_mul(24)?;
-                let mut ebuf = [0u8; 24 * MAX_ELEMS as usize];
-                if !rpm(ptr as usize, &mut ebuf[..bytes]) {
-                    return None;
-                }
-                for k in 0..len as usize {
-                    let e = k * 24;
-                    vecs[i].push((g64(&ebuf, e), g64(&ebuf, e + 8), g64(&ebuf, e + 0x10)));
-                }
-            }
-        }
-        Some(Alloc { region, ty, vecs })
-    }
-
-    pub struct Scan {
-        pub found: Vec<(usize, usize, Vec<Alloc>)>,
-        pub n_regions: usize,
-        pub bytes: usize,
-        pub skipped: Vec<(usize, usize)>,
-        pub largest: Vec<(usize, usize)>,
-    }
-
-    /// 返回 (起始地址, 连续结构体个数, Allocs) 以及扫描统计。
-    pub fn scan() -> Scan {
-        let regs = map_regions();
-        let mut found = Vec::new();
-        let mut buf = vec![0u8; CHUNK];
-        let mut n_regions = 0usize;
-        let mut bytes = 0usize;
-        let mut skipped = Vec::new();
-        let mut largest = Vec::new();
-        for &(base, end) in &regs {
-            let size = end - base;
-            largest.push((base, size));
-            if size > SKIP_REGION_BIGGER {
-                skipped.push((base, size));
-                continue;
-            }
-            n_regions += 1;
-            bytes += size;
-            let mut off = 0usize;
-            while off < size {
-                let n = (size - off).min(CHUNK);
-                if !rpm(base + off, &mut buf[..n]) {
-                    off += n;
-                    continue;
-                }
-                let chunk = &buf[..n];
-                let mut i = 0usize;
-                while i + 0x58 <= n {
-                    if parse(chunk, i).is_some()
-                        && (i < 0x58 || parse(chunk, i - 0x58).is_none())
-                    {
-                        let start = i;
-                        let mut allocs = Vec::new();
-                        let mut q = i;
-                        while q + 0x58 <= n {
-                            match parse(chunk, q) {
-                                Some(a) => {
-                                    allocs.push(a);
-                                    q += 0x58;
-                                }
-                                None => break,
-                            }
-                        }
-                        let nrun = allocs.len();
-                        found.push((base + off + start, nrun, allocs));
-                        i = q;
-                        continue;
-                    }
-                    i += 8;
-                }
-                if n < CHUNK {
-                    break;
-                }
-                off += CHUNK - OVERLAP;
-            }
-        }
-        largest.sort_by_key(|x| core::cmp::Reverse(x.1));
-        largest.truncate(10);
-        Scan {
-            found,
-            n_regions,
-            bytes,
-            skipped,
-            largest,
-        }
-    }
 }
 
-static SEEDSCAN_DONE: AtomicBool = AtomicBool::new(false);
-static SEEDSCAN_TRIES: AtomicUsize = AtomicUsize::new(0);
-
-/// 真表是 (region,type) 唯一的一张表：同一 region、type 互不相同、至少一组 vec 有内容。
-fn seed_run_interesting(allocs: &[seedscan::Alloc]) -> bool {
-    if allocs.len() < 2 {
-        return false;
-    }
-    let r0 = allocs[0].region;
-    if allocs.iter().any(|a| a.region != r0) {
-        return false;
-    }
-    let mut types: Vec<u8> = allocs.iter().map(|a| a.ty).collect();
-    types.sort_unstable();
-    types.dedup();
-    if types.len() != allocs.len() {
-        return false;
-    }
-    if !allocs.iter().any(|a| a.vecs.iter().any(|v| !v.is_empty())) {
-        return false;
-    }
-    allocs.iter().all(|a| a.vecs.iter().all(|v| v.len() <= 32))
-}
-
-fn dump_seed_table() {
-    if SEEDSCAN_DONE.load(Ordering::SeqCst) {
-        return;
-    }
-    if SEEDSCAN_TRIES.fetch_add(1, Ordering::SeqCst) >= 3 {
-        return;
-    }
-    let scan = seedscan::scan();
-    let mut out = String::from("=== heap scan: InternationalSeedAllocation[] ===\n");
-    out.push_str(&format!(
-        "regions scanned: {} ({} MB), skipped >4GB: {}, candidates: {}\n",
-        scan.n_regions,
-        scan.bytes / 1_048_576,
-        scan.skipped.len(),
-        scan.found.len()
-    ));
-    for (a, s) in &scan.largest {
-        out.push_str(&format!("  region 0x{:x} size {} MB\n", a, s / 1_048_576));
-    }
-    let mut n_shown = 0usize;
-    for (addr, n, allocs) in &scan.found {
-        if n_shown >= 50 || !seed_run_interesting(allocs) {
-            continue;
-        }
-        n_shown += 1;
-        out.push_str(&format!("\n@0x{:x} run={}\n", addr, n));
-        for a in allocs {
-            out.push_str(&format!(
-                "  region={} type={} lens=[{},{},{}]\n",
-                a.region,
-                a.ty,
-                a.vecs[0].len(),
-                a.vecs[1].len(),
-                a.vecs[2].len()
-            ));
-            for (vi, v) in a.vecs.iter().enumerate() {
-                if v.is_empty() {
-                    continue;
-                }
-                out.push_str(&format!("    vec{}:", vi));
-                for e in v {
-                    out.push_str(&format!(" ({},{},{})", e.0, e.1, e.2));
-                }
-                out.push('\n');
-            }
-        }
-    }
-    out.push_str(&format!("\ninteresting runs: {}\n", n_shown));
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_seedscan.txt", &out);
-    if n_shown > 0 {
-        SEEDSCAN_DONE.store(true, Ordering::SeqCst);
-    }
-}
-
-// ============================ world 运行时探针 ============================
+// ============================ 国际杯种子表修正 ============================
 // 5/4 国际杯抽签崩在 tournament.rs:1494（种子池最后一个 pot 只有 2 队，
-// 回溯分配器仍按 4 个槽位写下标 → 越界）。种子池大小来自
-// 0x1416a61a0(world+0x16938 的 region HashSet)：
-//   N<=5 → 3,3,3,3,2（N=5 时 14 个，不是 4 的倍数 → 崩）
-//   N=6  → 按强度凑 16
-// HashSet 里的 region id 到底有几个、种子表里已经存了什么，稳定 SDK 看不到，
-// 只能从 host state 指针直接读（全部走 ReadProcessMemory，失败不抛异常）。
-static WORLDPROBE_LAST: AtomicUsize = AtomicUsize::new(0);
-
+// 回溯分配器仍按 4 个槽位写下标 → 越界）。种子分配表在 world 里，稳定 SDK
+// 不暴露，只能从 host state 指针直接读/改（全部走 ReadProcessMemory，失败不抛异常）。
+// WORLD_ADDR 缓存找到的 world 地址，避免每个 tick 重新扫描。
 static WORLD_ADDR: AtomicUsize = AtomicUsize::new(0);
-static MAP1_HASH: AtomicUsize = AtomicUsize::new(0);
-
-/// 通用 hashbrown 转储：map_base 处 ctrl/mask/growth/items/RandomState 依次排列，
-/// 值指针按 [val_off..] 打印，并把 (ptr_off,len_off) 指定的 Vec<u64> 内容打出来。
-fn dump_generic_map(
-    w: usize,
-    map_base: usize,
-    items_off: usize,
-    dump_len: usize,
-    vecs: &[(usize, usize)],
-    label: &str,
-) -> String {
-    let mut out = String::new();
-    let (Some(ctrl), Some(mask), Some(items)) = (
-        seedscan::rdu64(w + map_base),
-        seedscan::rdu64(w + map_base + 8),
-        seedscan::rdu64(w + map_base + items_off),
-    ) else {
-        return out;
-    };
-    if ctrl < 0x10000 || mask >= 4096 || !(mask + 1).is_power_of_two() || items > mask + 1 {
-        return out;
-    }
-    let n = (mask + 1) as usize;
-    let mut cbuf = vec![0u8; n];
-    if !seedscan::rpm(ctrl as usize, &mut cbuf) {
-        return out;
-    }
-    out.push_str(&format!(
-        "--- {label} @0x{map_base:x} ctrl=0x{ctrl:x} mask=0x{mask:x} items={items} ---\n"
-    ));
-    let base = ctrl - 16 * (mask + 1);
-    for i in 0..n {
-        if cbuf[i] & 0x80 != 0 {
-            continue;
-        }
-        let kp = seedscan::rdu64((base + 16 * i as u64) as usize).unwrap_or(0);
-        let vp = seedscan::rdu64((base + 16 * i as u64 + 8) as usize).unwrap_or(0);
-        let key = seedscan::rdu64(kp as usize).unwrap_or(0);
-        let mut vb = vec![0u8; dump_len];
-        if vp < 0x10000 || !seedscan::rpm(vp as usize, &mut vb) {
-            out.push_str(&format!("  [{i}] key={key} val=0x{vp:x} <unreadable>\n"));
-            continue;
-        }
-        out.push_str(&format!("  [{i}] key={key} val=0x{vp:x} q:"));
-        for k in (0..dump_len).step_by(8) {
-            out.push_str(&format!(
-                " {:x}",
-                u64::from_le_bytes(vb[k..k + 8].try_into().unwrap())
-            ));
-        }
-        out.push('\n');
-        for (oi, (po, lo)) in vecs.iter().enumerate() {
-            if *lo + 8 > dump_len {
-                continue;
-            }
-            let p = u64::from_le_bytes(vb[*po..*po + 8].try_into().unwrap());
-            let l = u64::from_le_bytes(vb[*lo..*lo + 8].try_into().unwrap());
-            if p < 0x10000 || l == 0 || l > 128 {
-                continue;
-            }
-            let mut eb = vec![0u8; (l * 8) as usize];
-            if !seedscan::rpm(p as usize, &mut eb) {
-                continue;
-            }
-            out.push_str(&format!("      v{oi}(+{po:x}) len={l}:"));
-            for e in 0..(l as usize).min(64) {
-                out.push_str(&format!(
-                    " {}",
-                    u64::from_le_bytes(eb[e * 8..e * 8 + 8].try_into().unwrap())
-                ));
-            }
-            out.push('\n');
-        }
-    }
-    out
-}
-
-/// world+0x17478：抽签取队用的「排名表」HashMap。
-/// 0x141378e10(kind=4) 用 key 查这张表 → value（+8/+0x10、+0x20/+0x28 两个 Vec，
-/// +0x18 一个计数），再按名次从元素（0x40 字节）里取出队伍。
-/// 国际杯种子池里每缺一个名额 = 某个 (league, rank) 在这里没查到。
-fn dump_rankmap_at(w: usize) -> String {
-    let mut out = String::new();
-    let (Some(ctrl), Some(mask), Some(items)) = (
-        seedscan::rdu64(w + 0x17478),
-        seedscan::rdu64(w + 0x17480),
-        seedscan::rdu64(w + 0x17490),
-    ) else {
-        return out;
-    };
-    if ctrl < 0x10000 || mask >= 4096 || !(mask + 1).is_power_of_two() || items > mask + 1 {
-        return out;
-    }
-    let n = (mask + 1) as usize;
-    let mut cbuf = vec![0u8; n];
-    if !seedscan::rpm(ctrl as usize, &mut cbuf) {
-        return out;
-    }
-    out.push_str(&format!(
-        "--- world+0x17478 排名表 ctrl=0x{:x} mask=0x{:x} items={} ---\n",
-        ctrl, mask, items
-    ));
-    let base = ctrl - 16 * (mask + 1);
-    for i in 0..n {
-        if cbuf[i] & 0x80 != 0 {
-            continue;
-        }
-        let kp = seedscan::rdu64((base + 16 * i as u64) as usize).unwrap_or(0);
-        let vp = seedscan::rdu64((base + 16 * i as u64 + 8) as usize).unwrap_or(0);
-        let key = seedscan::rdu64(kp as usize).unwrap_or(0);
-        let mut vb = [0u8; 0x40];
-        if vp < 0x10000 || !seedscan::rpm(vp as usize, &mut vb) {
-            out.push_str(&format!("  [{i}] key={key} val=0x{vp:x} <unreadable>\n"));
-            continue;
-        }
-        let q = |o: usize| u64::from_le_bytes(vb[o..o + 8].try_into().unwrap());
-        out.push_str(&format!(
-            "  [{i}] key={key} val=0x{vp:x} cnt={} v1=({:x},{:x}) v2=({:x},{:x}) hdr={:x?}\n",
-            q(0x18), q(0x8), q(0x10), q(0x20), q(0x28),
-            [q(0x30), q(0x38)]
-        ));
-        for (vi, (p, l)) in [(q(0x8), q(0x10)), (q(0x20), q(0x28))].iter().enumerate() {
-            if *p < 0x10000 || *l == 0 || *l > 64 {
-                continue;
-            }
-            let mut eb = vec![0u8; (*l * 0x40) as usize];
-            if !seedscan::rpm(*p as usize, &mut eb) {
-                continue;
-            }
-            out.push_str(&format!("      v{vi} ptr=0x{p:x} len={l}:"));
-            for e in 0..(*l as usize).min(24) {
-                let o = e * 0x40;
-                out.push_str(&format!(
-                    " ({} {} {} {})",
-                    u64::from_le_bytes(eb[o..o + 8].try_into().unwrap()),
-                    u64::from_le_bytes(eb[o + 8..o + 16].try_into().unwrap()),
-                    u64::from_le_bytes(eb[o + 0x10..o + 0x18].try_into().unwrap()),
-                    u64::from_le_bytes(eb[o + 0x18..o + 0x20].try_into().unwrap())
-                ));
-            }
-            out.push('\n');
-        }
-    }
-    out
-}
-
-/// 调游戏自己的取队函数时用的 key：kind=4 表示「联赛名次」。
-#[repr(C)]
-#[allow(dead_code)]
-struct RankKey {
-    kind: u64,
-    comp: u64,
-    rank: u64,
-}
-
-#[link(name = "kernel32")]
-extern "system" {
-    fn GetModuleHandleW(name: *const u16) -> isize;
-}
-
-/// 主模块（TeamfightManager2.exe）的真实加载基址。
-/// exe 带 DYNAMICBASE+HIGH_ENTROPY，每次启动基址都随机，不能写死 0x140000000。
-fn exe_base() -> u64 {
-    unsafe { GetModuleHandleW(core::ptr::null()) as u64 }
-}
-
-/// Windows x64 直接调用 exe 里的两参数函数（rcx=a0，rdx=a1），只取返回值 rax。
-/// rva 是相对 exe 映像基址（0x140000000）的偏移；用普通的 extern "win64"
-/// 函数指针调用，让编译器自己处理 shadow space 和栈对齐；
-/// 这些函数返回 Option 时 rax=1/0 就是「取到/取不到」。
-unsafe fn call_game_fn(rva: u64, a0: u64, a1: u64) -> u64 {
-    let f = exe_base() + rva;
-    let fp: unsafe extern "win64" fn(u64, u64) -> u64 = core::mem::transmute(f as usize);
-    fp(a0, a1)
-}
 
 /// 判断 w+base 处是不是一个可读的 hashbrown 头（ctrl/mask/items）。
 fn map_header_ok(w: usize, base: usize, items_off: usize) -> bool {
@@ -1793,313 +1129,6 @@ fn map_header_ok(w: usize, base: usize, items_off: usize) -> bool {
     }
     let mut probe = [0u8; 16];
     seedscan::rpm(ctrl as usize, &mut probe)
-}
-
-/// 用游戏自己的 0x141378e10(kind=4) 把每个联赛第 1..10 名各取一次队。
-/// 抽签挑种子就是走这个函数；哪几个名次取不到，就会直接导致 16 队池子凑不满。
-/// 调用前必须先确认 world 真的是 world（排名表、比赛表都是 hashbrown 形状），
-/// 否则会拿一个假 world 调进游戏里，直接 AV。
-fn dump_rank_lookup_probe(w: usize) -> String {
-    let mut out = format!(
-        "\n--- 名次取队探测 0x141378e10(kind=4) exe_base=0x{:x} ---\n",
-        exe_base()
-    );
-    if !map_header_ok(w, 0x17478, 0x18) || !map_header_ok(w, 0x173e8, 0x18) {
-        out.push_str(&format!(
-            "  skip: world 0x{w:x} 排名表/比赛表不像 hashbrown（17478_ok={} 173e8_ok={}）\n",
-            map_header_ok(w, 0x17478, 0x18),
-            map_header_ok(w, 0x173e8, 0x18)
-        ));
-        let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_rankprobe.txt", &out);
-        return out;
-    }
-    for comp in 0u64..12 {
-        out.push_str(&format!("  comp {comp:2}:"));
-        for rank in 1u64..=10 {
-            let k = RankKey {
-                kind: 4,
-                comp,
-                rank,
-            };
-            let _ = std::fs::write(
-                "C:/Users/Y/Desktop/kpl_sab_rankprobe.txt",
-                format!("world=0x{w:x}\n{out} -> calling comp={comp} rank={rank}\n"),
-            );
-            // 0x141378e10 - 0x140000000 = 0x1378e10
-            let ok = unsafe { call_game_fn(0x1378e10, &k as *const RankKey as u64, w as u64) };
-            if ok == 1 {
-                out.push_str(&format!(" {rank}:ok"));
-            } else {
-                out.push_str(&format!(" {rank}:-"));
-            }
-        }
-        out.push('\n');
-    }
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_rankprobe.txt", &out);
-    out
-}
-
-/// 每个 tournament 的抽签类型字节：`0x1416db2d2` 从 0x17118 的 value+0x68 读它，
-/// 然后 `cmp al,2` 选种子表的 vec：<2 → vec0，==2 → vec1，>2 → vec2。
-/// Challengers E 是 2，所以它的抽签池永远来自 vec1。
-fn dump_tourney_types(w: usize) -> String {
-    let mut out = String::new();
-    let (Some(ctrl), Some(mask), Some(items)) = (
-        seedscan::rdu64(w + 0x17118),
-        seedscan::rdu64(w + 0x17120),
-        seedscan::rdu64(w + 0x17130),
-    ) else {
-        return out;
-    };
-    if ctrl < 0x10000 || mask >= 4096 || !(mask + 1).is_power_of_two() || items > mask + 1 {
-        return out;
-    }
-    let n = (mask + 1) as usize;
-    let mut cbuf = vec![0u8; n];
-    if !seedscan::rpm(ctrl as usize, &mut cbuf) {
-        return out;
-    }
-    let base = ctrl - 16 * (mask + 1);
-    out.push_str(&format!(
-        "--- tournament 抽签类型 (world+0x17118) items={items} ---\n"
-    ));
-    for i in 0..n {
-        if cbuf[i] & 0x80 != 0 {
-            continue;
-        }
-        let kp = seedscan::rdu64((base + 16 * i as u64) as usize).unwrap_or(0);
-        let vp = seedscan::rdu64((base + 16 * i as u64 + 8) as usize).unwrap_or(0);
-        if kp < 0x10000 || vp < 0x10000 {
-            continue;
-        }
-        let key = seedscan::rdu64(kp as usize).unwrap_or(u64::MAX);
-        let ty = seedscan::rdu64(vp as usize + 0x68).map(|v| v & 0xff).unwrap_or(255);
-        let vi = if ty < 2 { 0 } else if ty == 2 { 1 } else { 2 };
-        out.push_str(&format!("  tourney {key}: type={ty} → 用种子表 vec{vi}\n"));
-    }
-    out
-}
-
-/// world+0x17118：`抽签`入口用来按 tournament_id 找抽签状态的 HashMap。
-/// 头 ctrl@+0x17118、mask@+0x17120、items@+0x17130、RandomState@+0x17138。
-/// 桶 16 字节 (key_ptr, value_ptr)，value->+0x68 是 tournament 类型字节。
-fn dump_map1_at(w: usize) -> String {
-    let mut out = String::new();
-    let (Some(ctrl), Some(mask), Some(items)) = (
-        seedscan::rdu64(w + 0x17118),
-        seedscan::rdu64(w + 0x17120),
-        seedscan::rdu64(w + 0x17130),
-    ) else {
-        return out;
-    };
-    if ctrl < 0x10000 || mask >= 4096 || !(mask + 1).is_power_of_two() || items > mask + 1 {
-        return out;
-    }
-    let n = (mask + 1) as usize;
-    let mut cbuf = vec![0u8; n];
-    if !seedscan::rpm(ctrl as usize, &mut cbuf) {
-        return out;
-    }
-    out.push_str(&format!(
-        "--- world+0x17118 map ctrl=0x{:x} mask=0x{:x} items={} ---\n",
-        ctrl, mask, items
-    ));
-    let base = ctrl - 16 * (mask + 1);
-    for i in 0..n {
-        if cbuf[i] & 0x80 != 0 {
-            continue;
-        }
-        let kp = seedscan::rdu64((base + 16 * i as u64) as usize).unwrap_or(0);
-        let vp = seedscan::rdu64((base + 16 * i as u64 + 8) as usize).unwrap_or(0);
-        let key = seedscan::rdu64(kp as usize).unwrap_or(0);
-        out.push_str(&format!("  [{i}] key={key} val=0x{vp:x}"));
-        let mut vb = vec![0u8; 0x100];
-        if vp < 0x10000 || !seedscan::rpm(vp as usize, &mut vb) {
-            out.push('\n');
-            continue;
-        }
-        out.push_str(" q:");
-        for k in (0..0x100).step_by(8) {
-            let mut b = [0u8; 8];
-            b.copy_from_slice(&vb[k..k + 8]);
-            out.push_str(&format!(" {:x}", u64::from_le_bytes(b)));
-        }
-        out.push('\n');
-        // value 里成对出现的 Vec：ptr/len 相邻，元素 0x20 字节时按 len 打出来。
-        for k in (0..0xF8).step_by(8) {
-            let mut b = [0u8; 8];
-            b.copy_from_slice(&vb[k..k + 8]);
-            let p = u64::from_le_bytes(b);
-            b.copy_from_slice(&vb[k + 8..k + 16]);
-            let l = u64::from_le_bytes(b);
-            if p < 0x10000 || l == 0 || l > 64 {
-                continue;
-            }
-            let mut eb = vec![0u8; (l * 0x20) as usize];
-            if !seedscan::rpm(p as usize, &mut eb) {
-                continue;
-            }
-            out.push_str(&format!("      vec@{k:x} ptr=0x{p:x} len={l}"));
-            for e in 0..l as usize {
-                let o = e * 0x20;
-                let w0 = u64::from_le_bytes(eb[o..o + 8].try_into().unwrap());
-                let w1 = u64::from_le_bytes(eb[o + 8..o + 16].try_into().unwrap());
-                let w2 = u64::from_le_bytes(eb[o + 0x10..o + 0x18].try_into().unwrap());
-                let w3 = u64::from_le_bytes(eb[o + 0x18..o + 0x20].try_into().unwrap());
-                out.push_str(&format!(" ({w0},{w1},{w2},{w3})"));
-            }
-            out.push('\n');
-        }
-    }
-    out
-}
-static MAP2_WATCH: AtomicBool = AtomicBool::new(false);
-
-/// world+0x174c0：0x1416d5370（tournament.rs:2326 崩在这里）用的 HashMap。
-/// 头：ctrl@+0、mask@+8、growth_left@+0x10、items@+0x18。
-/// 桶 16 字节 (key_ptr, value_ptr)，bucket i 在 ctrl-16*(mask+1)+16*i，
-/// ctrl[i] 最高位为 0 表示占用。value 里 +0x38/+0x40 是 Vec<HashSet>（0x30 字节/个）。
-fn dump_map2_at(w: usize) -> String {
-    let mut out = String::new();
-    let (Some(ctrl), Some(mask), Some(items)) = (
-        seedscan::rdu64(w + 0x174c0),
-        seedscan::rdu64(w + 0x174c8),
-        seedscan::rdu64(w + 0x174d8),
-    ) else {
-        return out;
-    };
-    if ctrl < 0x10000 || mask >= 4096 || !(mask + 1).is_power_of_two() || items > mask + 1 {
-        return out;
-    }
-    let n = (mask + 1) as usize;
-    let mut cbuf = vec![0u8; n];
-    if !seedscan::rpm(ctrl as usize, &mut cbuf) {
-        return out;
-    }
-    out.push_str(&format!(
-        "--- world+0x174c0 map world=0x{:x} ctrl=0x{:x} mask=0x{:x} items={} ---\n",
-        w, ctrl, mask, items
-    ));
-    let base = ctrl - 16 * (mask + 1);
-    for i in 0..n {
-        if cbuf[i] & 0x80 != 0 {
-            continue;
-        }
-        let kp = seedscan::rdu64((base + 16 * i as u64) as usize).unwrap_or(0);
-        let vp = seedscan::rdu64((base + 16 * i as u64 + 8) as usize).unwrap_or(0);
-        let key = seedscan::rdu64(kp as usize).unwrap_or(0);
-        out.push_str(&format!(
-            "  [{i}] key_ptr=0x{kp:x} key={key} val_ptr=0x{vp:x}\n"
-        ));
-        let mut vb = vec![0u8; 0x80];
-        if vp < 0x10000 || !seedscan::rpm(vp as usize, &mut vb) {
-            continue;
-        }
-        let q = |k: usize| -> u64 {
-            let mut b = [0u8; 8];
-            b.copy_from_slice(&vb[k..k + 8]);
-            u64::from_le_bytes(b)
-        };
-        out.push_str("      val:");
-        for k in (0..0x80).step_by(8) {
-            out.push_str(&format!(" {:x}", q(k)));
-        }
-        out.push('\n');
-        let (vlen, vptr) = (q(0x40), q(0x38));
-        if vlen == 0 || vlen > 32 || vptr < 0x10000 {
-            continue;
-        }
-        let mut eb = vec![0u8; (vlen * 0x30) as usize];
-        if !seedscan::rpm(vptr as usize, &mut eb) {
-            continue;
-        }
-        for e in 0..vlen as usize {
-            let o = e * 0x30;
-            let ec = u64::from_le_bytes(eb[o..o + 8].try_into().unwrap());
-            let em = u64::from_le_bytes(eb[o + 8..o + 16].try_into().unwrap());
-            let ei = u64::from_le_bytes(eb[o + 0x18..o + 0x20].try_into().unwrap());
-            out.push_str(&format!(
-                "      inner[{e}] ctrl=0x{ec:x} mask=0x{em:x} items={ei}\n"
-            ));
-            if ec < 0x10000 || em >= 4096 || !(em + 1).is_power_of_two() || ei > em + 1 {
-                continue;
-            }
-            let inn = (em + 1) as usize;
-            let mut ic = vec![0u8; inn];
-            if !seedscan::rpm(ec as usize, &mut ic) {
-                continue;
-            }
-            // HashSet<&T>：桶内只有一个 8 字节指针，槽位步长是 8。
-            let ibase = ec - 8 * (em + 1);
-            let mut line = String::new();
-            for j in 0..inn {
-                if ic[j] & 0x80 != 0 {
-                    continue;
-                }
-                let p = seedscan::rdu64((ibase + 8 * j as u64) as usize).unwrap_or(0);
-                let v = seedscan::rdu64(p as usize).unwrap_or(0);
-                line.push_str(&format!(" ({j}:{v})"));
-            }
-            out.push_str(&format!("        entries{line}\n"));
-        }
-    }
-    out
-}
-
-/// 抽签发生在 tick 内，抽签前探针看不到新分组。开一个只做 ReadProcessMemory
-/// 的后台线程，持续快照 world+0x174c0；崩在抽签里之后内存还在，能抓到坏的那一组。
-fn start_map2_watcher() {
-    if MAP2_WATCH.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    let _ = std::fs::remove_file("C:/Users/Y/Desktop/kpl_sab_groups_log.txt");
-    std::thread::spawn(|| {
-        use std::io::Write;
-        let mut last_hdr = (0u64, u64::MAX);
-        let mut n = 0usize;
-        loop {
-            std::thread::sleep(std::time::Duration::from_millis(1));
-            let w = WORLD_ADDR.load(Ordering::Relaxed);
-            if w == 0 {
-                continue;
-            }
-            let (Some(ctrl), Some(mask), Some(items)) = (
-                seedscan::rdu64(w + 0x174c0),
-                seedscan::rdu64(w + 0x174c8),
-                seedscan::rdu64(w + 0x174d8),
-            ) else {
-                continue;
-            };
-            if ctrl < 0x10000 || mask >= 4096 || !(mask + 1).is_power_of_two() || items > mask + 1 {
-                continue;
-            }
-            if (ctrl, items) == last_hdr {
-                continue;
-            }
-            last_hdr = (ctrl, items);
-            let s = dump_map2_at(w);
-            if s.is_empty() {
-                continue;
-            }
-            n += 1;
-            // 抽签只有几毫秒，崩溃后 world 会被释放（块被复用），所以按序追加而不是只留最后一份。
-            let ts = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis())
-                .unwrap_or(0);
-            let body = format!("### #{n} ts={ts}\n{s}\n");
-            if let Ok(mut f) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open("C:/Users/Y/Desktop/kpl_sab_groups_log.txt")
-            {
-                let _ = f.write_all(body.as_bytes());
-            }
-            if n > 4000 {
-                break;
-            }
-        }
-    });
 }
 
 /// 在 state 头部找 world：要求 region 集合、排名表、比赛表都是 hashbrown 形状。
@@ -2156,7 +1185,10 @@ fn find_world(s: usize) -> Option<usize> {
 fn maybe_fix_cup_allocation(ctx: &StableServerCtx<'_>) {
     let w = match WORLD_ADDR.load(Ordering::Relaxed) {
         0 => match find_world(ctx.raw_state() as usize) {
-            Some(w) => w,
+            Some(w) => {
+                WORLD_ADDR.store(w, Ordering::Relaxed);
+                w
+            }
             None => return,
         },
         w => w,
@@ -2173,7 +1205,6 @@ fn maybe_fix_cup_allocation(ctx: &StableServerCtx<'_>) {
     }
     // 只改当前年份、type=0 的那条分配表（和其它年份的条目区分开）。
     let year = seedscan::rdu32(w + 0x17a40).map(|v| (v as i32) >> 13).unwrap_or(0) as u64;
-    let mut log = String::new();
     for e in 0..len as usize {
         let base = ptr as usize + e * 0x58;
         if seedscan::rdu64(base + 0x48).unwrap_or(u64::MAX) != year {
@@ -2214,7 +1245,6 @@ fn maybe_fix_cup_allocation(ctx: &StableServerCtx<'_>) {
             };
             let mut total = 0u64;
             let mut kept = 0u64;
-            let mut moved: Vec<(u64, u64, u64)> = Vec::new();
             for k in 0..vlen as usize {
                 let ea = vptr as usize + k * 0x18;
                 let (Some(r), Some(c)) =
@@ -2231,7 +1261,6 @@ fn maybe_fix_cup_allocation(ctx: &StableServerCtx<'_>) {
                 kept += keep;
                 if keep != c {
                     unsafe { core::ptr::write_volatile((ea + 8) as *mut u64, keep) };
-                    moved.push((r, c, keep));
                 }
             }
             // 去掉的队（超上限 / 赛区供不出）再按 cap 匀给同 vec 里还有空位的赛区。
@@ -2253,18 +1282,9 @@ fn maybe_fix_cup_allocation(ctx: &StableServerCtx<'_>) {
                     continue;
                 }
                 unsafe { core::ptr::write_volatile((ta + 8) as *mut u64, tc + add) };
-                moved.push((gr, tc, tc + add));
                 left -= add;
             }
-            if !moved.is_empty() {
-                log.push_str(&format!(
-                    "vec{vi}: 按每赛区上限 {cap} 重排 {moved:?}，剩 {left} 队没地方放\n"
-                ));
-            }
         }
-    }
-    if !log.is_empty() {
-        let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_cupfix.txt", &log);
     }
 }
 
@@ -2533,8 +1553,6 @@ fn maybe_swap_cup_fillers(ctx: &mut StableServerCtx<'_>) {
 
     let mut ci = 0usize;
     let mut assigned: Vec<usize> = Vec::new();
-    let mut log = String::new();
-    let mut touched = 0usize;
     for s in &seats {
         if !s.editable {
             assigned.extend(s.teams.iter().copied());
@@ -2558,7 +1576,6 @@ fn maybe_swap_cup_fillers(ctx: &mut StableServerCtx<'_>) {
             continue;
         }
 
-        let mut changed = false;
         // groups 是数组：[{team_id:{stat}}, ...]，队 id 键在第 1 层（没有小组下标键）。
         for (field, min_depth) in [
             ("team_seeds", 1usize),
@@ -2571,44 +1588,21 @@ fn maybe_swap_cup_fillers(ctx: &mut StableServerCtx<'_>) {
                 continue;
             };
             let want = json_swap_keys(&cur, &map, min_depth);
-            if want != cur
-                && ctx.record_set_json(
-                    RecordKindV1::TournamentCompetition,
-                    s.tid,
-                    field,
-                    &want,
-                )
-            {
-                changed = true;
+            if want != cur {
+                ctx.record_set_json(RecordKindV1::TournamentCompetition, s.tid, field, &want);
             }
         }
-        let mut nm = 0usize;
         for &m in &s.gms {
             for field in ["team1", "team2"] {
                 let Some(cur) = ctx.record_get_json(RecordKindV1::Match, m, field) else {
                     continue;
                 };
                 let want = json_swap_teams(&cur, &map);
-                if want != cur
-                    && ctx.record_set_json(RecordKindV1::Match, m, field, &want)
-                {
-                    nm += 1;
+                if want != cur {
+                    ctx.record_set_json(RecordKindV1::Match, m, field, &want);
                 }
             }
         }
-        if changed || nm > 0 {
-            touched += 1;
-        }
-        log.push_str(&format!(
-            "杯赛 {}：改对阵 {} 处，换席位 {} 个 — ",
-            s.tid,
-            nm,
-            map.len()
-        ));
-        for (o, n) in &map {
-            log.push_str(&format!("{} -> {}；", team_name(ctx, *o), team_name(ctx, *n)));
-        }
-        log.push('\n');
 
         let mut now = s.teams.clone();
         for x in now.iter_mut() {
@@ -2617,222 +1611,6 @@ fn maybe_swap_cup_fillers(ctx: &mut StableServerCtx<'_>) {
             }
         }
         assigned.extend(now);
-    }
-
-    if !log.is_empty() {
-        let mut head = String::from("=== 杯赛席位替换 ===\n最终名次：");
-        for (i, &t) in rank.iter().enumerate() {
-            head.push_str(&format!("{}.{}；", i + 1, team_name(ctx, t)));
-        }
-        head.push('\n');
-        head.push_str(&format!(
-            "处理 {} 个杯赛，{} 个有改动\n",
-            seats.len(),
-            touched
-        ));
-        head.push_str(&log);
-        let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_cupswap.txt", head);
-    }
-}
-
-fn dump_world_probe(ctx: &StableServerCtx<'_>) {
-    let s = ctx.raw_state() as usize;
-    if s < 0x10000 {
-        return;
-    }
-    // 候选 world 基址：state 本身 + state 头 0x400 字节里的对齐指针。
-    let mut cands: Vec<(String, usize)> = vec![("state".to_string(), s)];
-    for off in (0..0x400).step_by(8) {
-        if let Some(v) = seedscan::rdu64(s + off) {
-            if v > 0x10000 && v % 8 == 0 {
-                cands.push((format!("[state+0x{:x}]", off), v as usize));
-            }
-        }
-    }
-    let mut out = String::from("=== world probe（抽签前） ===\n");
-    out.push_str(&format!("state = 0x{:x}\n", s));
-    let mut picked: Option<(String, usize, u64, u64, u64)> = None;
-    for (tag, w) in cands.iter().take(130) {
-        let (Some(ctrl), Some(mask), Some(items)) = (
-            seedscan::rdu64(w + 0x16938),
-            seedscan::rdu64(w + 0x16940),
-            seedscan::rdu64(w + 0x16950),
-        ) else {
-            continue;
-        };
-        // hashbrown: ctrl 指针、bucket_mask=2^k-1、items<=bucket 数。
-        // 另外要求排名表(+0x17478)和比赛表(+0x173e8)也像正常 hashbrown，
-        // 否则容易把某个碰巧长得像 map 的堆指针当成 world（会调进游戏里 AV）。
-        if ctrl > 0x10000
-            && mask < 4096
-            && (mask + 1).is_power_of_two()
-            && items <= mask + 1
-            && map_header_ok(*w, 0x17478, 0x18)
-            && map_header_ok(*w, 0x173e8, 0x18)
-        {
-            let mut probe = [0u8; 16];
-            if !seedscan::rpm(ctrl as usize, &mut probe) {
-                continue;
-            }
-            if picked.is_none() {
-                picked = Some((tag.clone(), *w, ctrl, mask, items));
-            }
-        }
-    }
-    match picked.clone() {
-        None => {
-            out.push_str("没找到 hashbrown 形状的 world+0x16938（state 不是 world？）\n");
-        }
-        Some((tag, w, ctrl, mask, items)) => {
-            out.push_str(&format!(
-                "world = {} 0x{:x}  region-set: ctrl=0x{:x} mask=0x{:x}（{} 槽） items={}\n",
-                tag,
-                w,
-                ctrl,
-                mask,
-                mask + 1,
-                items
-            ));
-            out.push_str(&format!(
-                "date/key 源 [world+0x17a40] = {:?}  → key=>>13={:?}\n",
-                seedscan::rdu64(w + 0x17a40),
-                seedscan::rdu32(w + 0x17a40).map(|v| (v as i32) >> 13)
-            ));
-            // ctrl 字节 + 前面的 key 区原始字节（bucket 从 key 区尾部往前排）。
-            let n = (mask + 1) as usize;
-            let start = (ctrl as usize).saturating_sub(16 * n + 512);
-            let end = (ctrl as usize) + n + 16;
-            out.push_str(&format!("--- raw 0x{:x}..0x{:x} ---\n", start, end));
-            let mut buf = vec![0u8; end - start];
-            if seedscan::rpm(start, &mut buf) {
-                for (i, chunk) in buf.chunks(16).enumerate() {
-                    let a = start + i * 16;
-                    let mut hex = String::new();
-                    for b in chunk {
-                        hex.push_str(&format!("{:02x}", b));
-                    }
-                    out.push_str(&format!("{:016x}: {}\n", a, hex));
-                }
-            }
-        }
-    }
-    // ---- world+0x174c0：0x1416d5370（tournament.rs:2326 崩在这里）用的 HashMap ----
-    let picked_w = picked.as_ref().map(|p| p.1);
-    if let Some((_, w, _ctrl0, _, _)) = picked {
-        WORLD_ADDR.store(w, Ordering::Relaxed);
-        MAP1_HASH.store(seedscan::rdu64(w + 0x17118).unwrap_or(0) as usize, Ordering::Relaxed);
-        start_map2_watcher();
-        out.push_str(&format!(
-            "\n[raw 0x174c0] ctrl={:?} mask={:?} gl={:?} items={:?}\n",
-            seedscan::rdu64(w + 0x174c0),
-            seedscan::rdu64(w + 0x174c8),
-            seedscan::rdu64(w + 0x174d0),
-            seedscan::rdu64(w + 0x174d8)
-        ));
-        out.push_str(&dump_map2_at(w));
-        out.push_str(&dump_map1_at(w));
-        out.push_str(&dump_tourney_types(w));
-        out.push_str(&dump_rankmap_at(w));
-        // 0x170d0: region/种子槽 key -> Vec<league_id>（[+0x38]/[+0x40]），items 在 +0x18。
-        out.push_str(&dump_generic_map(
-            w,
-            0x170d0,
-            0x18,
-            0x60,
-            &[(0x38, 0x40)],
-            "world+0x170d0 region→leagues",
-        ));
-        // 0x173e8: competition id -> 结构体，日期区间在 +0x90/+0x94/+0x98。
-        out.push_str(&dump_generic_map(
-            w,
-            0x173e8,
-            0x18,
-            0xa0,
-            &[(0x20, 0x28), (0x38, 0x40)],
-            "world+0x173e8 comp→dates",
-        ));
-    }
-    // 种子表 Vec：cap@+0x169a0 ptr@+0x169a8 len@+0x169b0，元素 0x58 字节
-    // 元素内：3 个 Vec（ptr/len 在 +8/+0x10、+0x20/+0x28、+0x38/+0x40，
-    // 元素 0x18 字节）、key@+0x48、type@+0x50。
-    for (tag, w) in cands.iter().take(130) {
-        if Some(*w) != picked_w {
-            continue;
-        }
-        let (Some(cap), Some(ptr), Some(len)) = (
-            seedscan::rdu64(w + 0x169a0),
-            seedscan::rdu64(w + 0x169a8),
-            seedscan::rdu64(w + 0x169b0),
-        ) else {
-            continue;
-        };
-        if len == 0 || len > 64 || cap < len || ptr < 0x10000 {
-            continue;
-        }
-        out.push_str(&format!(
-            "\n--- 种子表 @{} world=0x{:x} cap={} ptr=0x{:x} len={} ---\n",
-            tag, w, cap, ptr, len
-        ));
-        let mut buf = vec![0u8; (len * 0x58) as usize];
-        if !seedscan::rpm(ptr as usize, &mut buf) {
-            out.push_str("  读取失败\n");
-            continue;
-        }
-        for e in 0..len as usize {
-            let off = e * 0x58;
-            let q = |k: usize| -> u64 {
-                let mut b = [0u8; 8];
-                b.copy_from_slice(&buf[off + k..off + k + 8]);
-                u64::from_le_bytes(b)
-            };
-            out.push_str(&format!(
-                "  [{e}] key=0x{:x} date={} type={} lens=[{},{},{}]\n",
-                q(0x48),
-                q(0x48) << 13,
-                buf[off + 0x50],
-                q(0x10),
-                q(0x28),
-                q(0x40)
-            ));
-            for (vi, (loff, poff)) in [(0x10usize, 0x8usize), (0x28, 0x20), (0x40, 0x38)]
-                .iter()
-                .enumerate()
-            {
-                let vlen = q(*loff);
-                let vptr = q(*poff);
-                if vlen == 0 || vlen > 64 || vptr < 0x10000 {
-                    continue;
-                }
-                let mut vb = vec![0u8; (vlen * 0x18) as usize];
-                if !seedscan::rpm(vptr as usize, &mut vb) {
-                    continue;
-                }
-                out.push_str(&format!("     vec{vi}:"));
-                for k in 0..vlen as usize {
-                    let o = k * 0x18;
-                    let mut t = [0u64; 3];
-                    for (j, tv) in t.iter_mut().enumerate() {
-                        let mut b = [0u8; 8];
-                        b.copy_from_slice(&vb[o + j * 8..o + j * 8 + 8]);
-                        *tv = u64::from_le_bytes(b);
-                    }
-                    out.push_str(&format!(" ({},{},{})", t[0], t[1], t[2]));
-                }
-                out.push('\n');
-            }
-        }
-        // 先把本体 dump 落盘，再去调游戏函数（万一调用崩了，快照还在）。
-        let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_worldprobe.txt", &out);
-        // 种子表在的时候，顺便用游戏自己的取队函数跑一遍名次探测。
-        out.push_str(&dump_rank_lookup_probe(*w));
-        break;
-    }
-    // 内容没变就不重复写盘。
-    let h = out.bytes().fold(1469598103934665603u64, |a, b| {
-        (a ^ b as u64).wrapping_mul(1099511628211)
-    }) as usize;
-    if WORLDPROBE_LAST.swap(h, Ordering::SeqCst) != h {
-        let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_worldprobe.txt", &out);
     }
 }
 
@@ -2961,38 +1739,25 @@ fn save_id_list(ctx: &StableServerCtx<'_>, key: &str) -> Option<Vec<usize>> {
 /// 统一季后赛：45 场打完后锁定 12 队、写 16 个槽位的对阵，之后每天重新对账。
 /// A组(TACC2, league 7) / B组(TACJ, league 5) 的奖金表清零。
 /// 统一名次只在 S组(league 1) 发一次，避免 S 队在 A 组表里重复拿钱。
-/// 幂等：已经是 0 就不重复写；只有真正改动时才落盘 dump。
+/// 幂等：已经是 0 就不重复写。
 fn zero_ab_prizes(ctx: &mut StableServerCtx<'_>) {
     if !ZERO_AB_PRIZES {
         return;
     }
-    let mut log = String::from("=== A/B 组奖金清零 ===\n");
-    let mut changed = false;
     for lid in [5usize, 7usize] {
         let cur = ctx
             .record_get_json(RecordKindV1::League, lid, "prize_money")
             .unwrap_or_default();
         let t = cur.trim();
         if t == "[0.0,0.0,0.0,0.0,0.0]" || t == "[0,0,0,0,0]" || t == "[]" {
-            log.push_str(&format!("league {} 已是 0：{}\n", lid, cur));
             continue;
         }
-        let ok = ctx.record_set_json(
+        ctx.record_set_json(
             RecordKindV1::League,
             lid,
             "prize_money",
             "[0.0,0.0,0.0,0.0,0.0]",
         );
-        if ok {
-            changed = true;
-        }
-        log.push_str(&format!(
-            "league {} prize_money {} -> [0.0,0.0,0.0,0.0,0.0]（写入={}）\n",
-            lid, cur, ok
-        ));
-    }
-    if changed {
-        let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_prizes.txt", log);
     }
 }
 
@@ -3031,10 +1796,6 @@ fn maybe_playoffs(ctx: &mut StableServerCtx<'_>) {
                 return;
             };
             if s.len() < 8 || a.len() < 8 {
-                let _ = std::fs::write(
-                    "C:/Users/Y/Desktop/kpl_sab_playoff_log.txt",
-                    format!("季后赛槽位不足：S={} A={}\n", s.len(), a.len()),
-                );
                 return;
             }
             let join = |v: &[usize]| {
@@ -3088,38 +1849,22 @@ fn maybe_playoffs(ctx: &mut StableServerCtx<'_>) {
 
     let built_key = format!("po_built_{}", tag);
     let first = ctx.save_get_string(&built_key).is_none();
-    let mut changed = 0usize;
-    let mut log = format!("=== 统一季后赛（tag={}）===\n", tag);
     for i in 0..16 {
         let mid = po_mids[i];
-        let (x, y, label) = plan[i];
-        let date = ctx
-            .record_get_string(RecordKindV1::Match, mid, "date")
-            .unwrap_or_default();
-        let played = is_played(ctx, mid);
-        if !played {
-            let jx = po_ref_json(ctx, x, &po_mids);
-            let jy = po_ref_json(ctx, y, &po_mids);
-            for (field, want) in [("team1", &jx), ("team2", &jy)] {
-                let cur = ctx
-                    .record_get_json(RecordKindV1::Match, mid, field)
-                    .unwrap_or_default();
-                if cur.trim() != want.trim()
-                    && ctx.record_set_json(RecordKindV1::Match, mid, field, want)
-                {
-                    changed += 1;
-                }
+        let (x, y, _label) = plan[i];
+        if is_played(ctx, mid) {
+            continue;
+        }
+        let jx = po_ref_json(ctx, x, &po_mids);
+        let jy = po_ref_json(ctx, y, &po_mids);
+        for (field, want) in [("team1", &jx), ("team2", &jy)] {
+            let cur = ctx
+                .record_get_json(RecordKindV1::Match, mid, field)
+                .unwrap_or_default();
+            if cur.trim() != want.trim() {
+                ctx.record_set_json(RecordKindV1::Match, mid, field, want);
             }
         }
-        log.push_str(&format!(
-            "[{}] #{} {} {} vs {} {}\n",
-            i,
-            mid,
-            date,
-            po_ref_desc(ctx, x, &po_mids),
-            po_ref_desc(ctx, y, &po_mids),
-            label
-        ));
     }
     // 16 场全部结束后 A/B 容器已经没有季后赛了，强制 finalize，
     // 否则赛季可能卡在「联赛未结束」不往下走。
@@ -3148,11 +1893,7 @@ fn maybe_playoffs(ctx: &mut StableServerCtx<'_>) {
                 po_mids[4], po_mids[6], po_mids[2], po_mids[0],
                 po_mids[8], po_mids[10], po_mids[12], po_mids[14],
             ];
-            let ok = set_comp_playoffs(ctx, c.s, &want);
-            log.push_str(&format!(
-                "名次编码：comp S playoffs -> {:?}（写入={}）\n",
-                want, ok
-            ));
+            set_comp_playoffs(ctx, c.s, &want);
         }
         // 最终名次新闻：全部 16 场已 End，按真实结果取 1-10 名。
         // 顺序 = 总决赛(1/2)、3-4名赛、5-6名赛、7-8名赛、9-10名赛。
@@ -3186,17 +1927,10 @@ fn maybe_playoffs(ctx: &mut StableServerCtx<'_>) {
                         ctx.news_push(tid, "KPL 最终名次", &content, "KPL");
                     }
                     ctx.save_set_string(&news_key, "1");
-                    log.push_str(&format!(
-                        "最终名次新闻已推送（{} 队）：\n{}",
-                        recipients.len(),
-                        content
-                    ));
                 }
             }
         }
     }
-    log.push_str(&format!("改动 {} 个槽位；首次建立={}\n", changed, first));
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_playoff_bracket.txt", &log);
 
     if first {
         ctx.save_set_string(&built_key, "1");
@@ -3221,179 +1955,7 @@ fn maybe_playoffs(ctx: &mut StableServerCtx<'_>) {
         for tid in all_real_kpl_team_ids(ctx) {
             ctx.news_push(tid, "KPL 统一季后赛对阵", &content, "KPL");
         }
-        let _ = std::fs::write(
-            "C:/Users/Y/Desktop/kpl_sab_playoff_log.txt",
-            format!("首次建立季后赛对阵\n{}", content),
-        );
     }
-}
-
-fn po_ref_desc(ctx: &StableServerCtx<'_>, src: PoSrc, mids: &[usize]) -> String {
-    match src {
-        PoSrc::Team(t) => format!("{}#{}", team_name(ctx, t), t),
-        PoSrc::Win(i) => match match_result(ctx, mids[i]) {
-            Some((w, _, _)) => format!("W#{}={}#{}", mids[i], team_name(ctx, w), w),
-            None => format!("W#{}", mids[i]),
-        },
-        PoSrc::Lose(i) => match po_loser_of(ctx, mids[i]) {
-            Some(l) => format!("L#{}={}#{}", mids[i], team_name(ctx, l), l),
-            None => format!("L#{}", mids[i]),
-        },
-    }
-}
-
-/// 调查用 dump：每个联赛的 playoffs 槽位（日期/need_win/队伍/状态）+ 积分表。
-fn dump_playoffs(ctx: &StableServerCtx<'_>) {
-    let mut out = String::from("=== LeagueCompetition playoffs 槽位 ===\n");
-    for cid in ctx.record_ids(RecordKindV1::LeagueCompetition) {
-        let label = cn_comp_label(ctx, cid);
-        let ty = ctx
-            .record_get_string(RecordKindV1::LeagueCompetition, cid, "league_type")
-            .unwrap_or_default();
-        let fin = ctx
-            .record_get_json(RecordKindV1::LeagueCompetition, cid, "finalized")
-            .unwrap_or_default();
-        let pj = ctx
-            .record_get_json(RecordKindV1::LeagueCompetition, cid, "playoffs")
-            .unwrap_or_default();
-        let ids = parse_ids(&pj);
-        out.push_str(&format!(
-            "\n-- comp {} [{}] type={} finalized={} playoffs={} --\n",
-            cid,
-            label,
-            ty,
-            fin,
-            ids.len()
-        ));
-        for (k, &mid) in ids.iter().enumerate() {
-            let date = ctx
-                .record_get_string(RecordKindV1::Match, mid, "date")
-                .unwrap_or_default();
-            let nw = ctx
-                .record_get_string(RecordKindV1::Match, mid, "need_win")
-                .unwrap_or_default();
-            let st = ctx
-                .record_get_json(RecordKindV1::Match, mid, "running_state")
-                .unwrap_or_default();
-            let t1 = match_team(ctx, mid, "team1");
-            let t2 = match_team(ctx, mid, "team2");
-            let tname = |t: Option<usize>| {
-                t.map(|x| format!("{}#{}", team_name(ctx, x), x))
-                    .unwrap_or_else(|| "-".into())
-            };
-            out.push_str(&format!(
-                "  [{}] #{} {} vs {} date={} need_win={} state={}\n",
-                k,
-                mid,
-                tname(t1),
-                tname(t2),
-                date,
-                nw,
-                st
-            ));
-        }
-        if cid == 1 || cid == 5 || cid == 7 || cid == 0 || cid == 2 {
-            out.push_str("   standings 原始顺序: ");
-            if let Some(sj) = ctx.record_get_json(RecordKindV1::LeagueCompetition, cid, "standings") {
-                let rows = parse_standings(&sj);
-                let mut v: Vec<String> = rows
-                    .iter()
-                    .map(|r| format!("{}#{}({}-{})", team_name(ctx, r.team), r.team, r.win, r.lose))
-                    .collect();
-                v.sort();
-                out.push_str(&v.join(", "));
-            }
-            out.push('\n');
-        }
-        if let Some(&mid) = ids.first() {
-            if let Some(raw) = ctx.record_get_json(RecordKindV1::Match, mid, "") {
-                out.push_str(&format!("   raw #{}: {}\n", mid, raw));
-            }
-        }
-    }
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_playoffs.txt", &out);
-}
-
-/// 调查用 dump：砍半后的 matches 数组 + 完整 YearSchedule 赛程。
-/// 在 SeasonRollover（赛程刚生成、make_single_rr 刚砍完）时写，用来确认
-/// YearSchedule 是否还引用被砍掉的 match index（=> 判断单循环是否会崩/跳）。
-fn dump_schedule(ctx: &StableServerCtx<'_>) {
-    let mut out = String::new();
-    out.push_str("===== LeagueCompetition.matches (after make_single_rr) =====\n");
-    for cid in ctx.record_ids(RecordKindV1::LeagueCompetition) {
-        let label = cn_comp_label(ctx, cid);
-        if let Some(m) = ctx.record_get_json(RecordKindV1::LeagueCompetition, cid, "matches") {
-            let ids = parse_ids(&m);
-            out.push_str(&format!(
-                "comp {} [{}] matches len={}\n  head=[{}]\n  tail=[{}]\n",
-                cid,
-                label,
-                ids.len(),
-                ids.iter().take(6).map(|x| x.to_string()).collect::<Vec<_>>().join(","),
-                ids.iter().rev().take(6).rev().map(|x| x.to_string()).collect::<Vec<_>>().join(","),
-            ));
-        }
-    }
-    out.push_str("\n===== YearSchedule (raw, full record) =====\n");
-    for sid in ctx.record_ids(RecordKindV1::YearSchedule) {
-        if let Some(json) = ctx.record_get_json(RecordKindV1::YearSchedule, sid, "") {
-            out.push_str(&format!("-- YearSchedule id {} --\n{}\n", sid, json));
-        }
-    }
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_schedule.txt", &out);
-}
-
-/// 诊断 dump：赛季进行中（MatchFinished）写 YearSchedule 的 LeagueMatch 轮数概况 + 孤儿 Match 记录数。
-/// 用来判断幽灵轮的来源：若 YearSchedule 的 max_round 又变回 17（被引擎重新生成），是裁剪时机问题；
-/// 若 max_round 仍是 8 但 UI 有幽灵轮，说明 UI 读的是没进 matches 数组的孤儿 Match 记录（round 9..17）。
-fn dump_live(ctx: &StableServerCtx<'_>) {
-    let mut out = String::new();
-    for sid in ctx.record_ids(RecordKindV1::YearSchedule) {
-        if let Some(sched) = ctx.record_get_json(RecordKindV1::YearSchedule, sid, "schedules") {
-            let mut count = 0usize;
-            let mut max_round = 0i64;
-            let mut from = 0usize;
-            let needle = "{\"LeagueMatch\":";
-            while let Some(rel) = sched[from..].find(needle) {
-                let p = from + rel;
-                let close = p + sched[p..].find(']').unwrap_or(sched.len() - p);
-                if let Some(r) = field_i64(&sched[p..close], "round") {
-                    count += 1;
-                    max_round = max_round.max(r);
-                }
-                from = close + 1;
-            }
-            out.push_str(&format!("YearSchedule {} LeagueMatch: count={} max_round={}\n", sid, count, max_round));
-        }
-    }
-    // 孤儿 Match 记录 = 不在任何 competition 的 matches/playoffs 数组里的 Match id
-    let mut referenced: HashSet<usize> = HashSet::new();
-    for cid in ctx.record_ids(RecordKindV1::LeagueCompetition) {
-        for field in ["matches", "playoffs"] {
-            if let Some(j) = ctx.record_get_json(RecordKindV1::LeagueCompetition, cid, field) {
-                for id in parse_ids(&j) {
-                    referenced.insert(id);
-                }
-            }
-        }
-    }
-    let all = ctx.record_ids(RecordKindV1::Match);
-    let orphans = all.iter().filter(|id| !referenced.contains(id)).count();
-    out.push_str(&format!("Match: total={} referenced={} orphan={}\n", all.len(), referenced.len(), orphans));
-    // 验证：被砍的 return-leg match 是否都改成 2099-12-31（清幽灵轮 + 不当 due）。
-    // orphan 应全落 date=2099；若还有别的日期说明 fix_orphan_dates 没覆盖全。
-    let (mut orphan_2099, mut orphan_other) = (0usize, 0usize);
-    for id in &all {
-        if referenced.contains(id) {
-            continue;
-        }
-        match ctx.record_get_string(RecordKindV1::Match, *id, "date").as_deref() {
-            Some(d) if d.starts_with("2099-") => orphan_2099 += 1,
-            _ => orphan_other += 1,
-        }
-    }
-    out.push_str(&format!("orphan date=2099: {} / orphan other-date: {}\n", orphan_2099, orphan_other));
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_live.txt", &out);
 }
 
 // ============================ SAB 实验：6 真队三轮 ============================
@@ -3484,10 +2046,8 @@ fn make_sab_r6(ctx: &mut StableServerCtx<'_>) {
     if !R6_EXPERIMENT {
         return;
     }
-    let mut log = String::new();
     for cid in cn_d1_competitions(ctx) {
-        let name = comp_league_name(ctx, cid).unwrap_or_else(|| "?".into());
-        if name == "TACJ2" {
+        if comp_league_name(ctx, cid).as_deref() == Some("TACJ2") {
             continue; // K甲 不动，保持 10 队单循环
         }
         let Some(mj) = ctx.record_get_json(RecordKindV1::LeagueCompetition, cid, "matches") else {
@@ -3495,88 +2055,16 @@ fn make_sab_r6(ctx: &mut StableServerCtx<'_>) {
         };
         let mids = parse_ids(&mj);
         let real = real_teams_in(ctx, cid);
-        log.push_str(&format!(
-            "comp {} [{}] matches={} real={} -> {}\n",
-            cid,
-            name,
-            mids.len(),
-            real.len(),
-            real.iter()
-                .map(|t| format!("{}#{}", team_name(ctx, *t), t))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
-        if mids.len() < 45 {
-            log.push_str("  SKIP: matches < 45（本档没跑过 make_single_rr？）\n");
-            continue;
-        }
-        if real.len() != 6 {
-            log.push_str("  SKIP: 真队不是 6 个（需重跑 gen_kpl_mod.js 改成每组 6真+4挂，并开新档）\n");
+        if mids.len() < 45 || real.len() != 6 {
             continue;
         }
         if mids[..45].iter().any(|m| is_played(ctx, *m)) {
-            log.push_str("  SKIP: 前 45 场里已有打完的（旧档），不动已出结果\n");
             continue;
         }
-        let pairs = three_rr_pairs(&real);
-        let ok = pairs
-            .iter()
-            .enumerate()
-            .filter(|(i, &(a, b))| set_match_teams(ctx, mids[*i], a, b))
-            .count();
-        log.push_str(&format!(
-            "  rewrote matches[0..45] = 3x single-RR among 6 real teams (ok={}/45)\n",
-            ok
-        ));
+        for (i, &(a, b)) in three_rr_pairs(&real).iter().enumerate() {
+            set_match_teams(ctx, mids[i], a, b);
+        }
     }
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_r6_log.txt", &log);
-}
-
-/// dump：改写后的 45 场 + 每队场次统计（验证「6 真队各打 15 场、4 挂名队 0 场」）。
-fn dump_r6(ctx: &StableServerCtx<'_>) {
-    let mut out = String::from("=== CN S/A/B 改写后的赛程（i=槽位 r=轮 #id 两队 date state）===\n");
-    for cid in cn_d1_competitions(ctx) {
-        let name = comp_league_name(ctx, cid).unwrap_or_else(|| "?".into());
-        if name == "TACJ2" {
-            continue;
-        }
-        let Some(mj) = ctx.record_get_json(RecordKindV1::LeagueCompetition, cid, "matches") else {
-            continue;
-        };
-        let mids = parse_ids(&mj);
-        out.push_str(&format!("\n-- comp {} [{}] matches={} --\n", cid, name, mids.len()));
-        let mut count: HashMap<usize, usize> = HashMap::new();
-        for (i, mid) in mids.iter().enumerate().take(45) {
-            let t1 = match_team(ctx, *mid, "team1");
-            let t2 = match_team(ctx, *mid, "team2");
-            if let Some(t) = t1 {
-                *count.entry(t).or_insert(0) += 1;
-            }
-            if let Some(t) = t2 {
-                *count.entry(t).or_insert(0) += 1;
-            }
-            out.push_str(&format!(
-                "  i={:>2} r={} #{:<5} {} vs {}  {} {}\n",
-                i,
-                i / 5,
-                mid,
-                t1.map(|t| team_name(ctx, t)).unwrap_or_else(|| "?".into()),
-                t2.map(|t| team_name(ctx, t)).unwrap_or_else(|| "?".into()),
-                ctx.record_get_string(RecordKindV1::Match, *mid, "date").unwrap_or_default(),
-                if is_played(ctx, *mid) { "End" } else { "-" }
-            ));
-        }
-        let mut rows: Vec<(usize, usize)> = count.into_iter().collect();
-        rows.sort_by_key(|r| r.0);
-        out.push_str(&format!(
-            "  场次统计: {}\n",
-            rows.iter()
-                .map(|(t, c)| format!("{}={}", team_name(ctx, *t), c))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
-    }
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_r6.txt", &out);
 }
 
 // ============================ 每轮积分清零（轮次边界） ============================
@@ -3717,71 +2205,6 @@ fn maybe_reset_rounds(ctx: &mut StableServerCtx<'_>) {
         );
         ctx.save_set_string(&key, &round.to_string());
     }
-}
-
-/// dump：各轮快照（清零前名次）+ 当前 standings 现状（验证清零是否被引擎重算回来）。
-fn dump_rounds(ctx: &StableServerCtx<'_>) {
-    let mut out = String::from("=== SAB 每轮积分清零（ROUND_RESET）===\n");
-    let mut snaps: Vec<String> = ctx
-        .save_keys()
-        .into_iter()
-        .filter(|k| {
-            k.starts_with("rr_snap_")
-                || k.starts_with("rr_zero_")
-                || k.starts_with("rr_done_")
-                || k.starts_with("rr_rank_")
-                || k.starts_with("rr_group_")
-                || k.starts_with("rr_fillers_")
-                || k.starts_with("regroup_done_")
-                || k.starts_with("card_")
-                || k.starts_with("move_done_")
-        })
-        .collect();
-    snaps.sort();
-    if snaps.is_empty() {
-        out.push_str("\n(还没有任何轮次边界发生过)\n");
-    } else {
-        out.push_str("\n-- 轮次记录（snap=清零前名次，zero=清零是否返回 true）--\n");
-        for k in &snaps {
-            out.push_str(&format!("{} = {}\n", k, ctx.save_get_string(k).unwrap_or_default()));
-        }
-    }
-    out.push_str("\n-- 当前 standings（按名次排）--\n");
-    for cid in cn_d1_competitions(ctx) {
-        let name = comp_league_name(ctx, cid).unwrap_or_else(|| "?".into());
-        if name == "TACJ2" {
-            continue;
-        }
-        let Some(mj) = ctx.record_get_json(RecordKindV1::LeagueCompetition, cid, "matches") else {
-            continue;
-        };
-        let mids: Vec<usize> = parse_ids(&mj).into_iter().take(45).collect();
-        let played = if mids.len() == 45 { rr_played(ctx, &mids) } else { 0 };
-        let ty = ctx
-            .record_get_string(RecordKindV1::LeagueCompetition, cid, "league_type")
-            .unwrap_or_else(|| "?".into());
-        out.push_str(&format!(
-            "\n-- comp {} [{}] {} 已打 {}/45 场（第 {} 轮进行中）--\n",
-            cid,
-            name,
-            ty,
-            played,
-            played / RR_PER_ROUND + 1
-        ));
-        for (i, r) in standings_ranked(ctx, cid).iter().enumerate() {
-            out.push_str(&format!(
-                "  {}. {}  {}-{}  set {}-{}  {}\n",
-                i + 1,
-                team_name(ctx, r.team),
-                r.win,
-                r.lose,
-                r.set_win,
-                r.set_lose,
-                if is_real_kpl(&team_name(ctx, r.team)) { "" } else { "[挂名]" }
-            ));
-        }
-    }
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_rounds.txt", &out);
 }
 
 // ============================ 重分组（实验） ============================
@@ -3934,14 +2357,6 @@ fn comp_mids(ctx: &StableServerCtx<'_>, cid: usize) -> Option<Vec<usize>> {
     Some(parse_ids(&mj))
 }
 
-fn team_names(ctx: &StableServerCtx<'_>, teams: &[usize]) -> String {
-    teams
-        .iter()
-        .map(|&t| format!("{}#{}", team_name(ctx, t), t))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 /// 赛季初（三组一场未打）重排三组日期：
 ///   - 每个容器每天只打 1 场（原来 5 槽挤在 3 天里，会出现同队一天两赛）
 ///   - 第 1/2/3 段之间各休 REGROUP_GAP_DAYS 天，给重分组留缓冲 + 给队伍休息
@@ -3974,14 +2389,7 @@ fn maybe_normalize_dates(ctx: &mut StableServerCtx<'_>) {
 
     // 每个容器的开赛时刻（保持原版的黄金档：A 下午、S 傍晚、B 晚上）
     let times = ["17:00:00", "14:00:00", "21:00:00"];
-    let mut log = format!(
-        "=== SAB 日期重排（每容器每天 1 场，段间休 {} 天）===\n",
-        REGROUP_GAP_DAYS
-    );
-    for (idx, label) in [(0usize, "S"), (1, "A"), (2, "B")] {
-        let mut changed = 0usize;
-        let mut first = String::new();
-        let mut last = String::new();
+    for (idx, _label) in [(0usize, "S"), (1, "A"), (2, "B")] {
         for i in 0..45 {
             let seg = (i / 15) as i64;
             let offset = i as i64 + seg * REGROUP_GAP_DAYS;
@@ -3992,58 +2400,9 @@ fn maybe_normalize_dates(ctx: &mut StableServerCtx<'_>) {
                 .unwrap_or_default();
             if want != cur {
                 ctx.record_set_string(RecordKindV1::Match, mid, "date", &want);
-                changed += 1;
-            }
-            if i == 0 {
-                first = want.clone();
-            }
-            if i == 44 {
-                last = want.clone();
             }
         }
-        log.push_str(&format!(
-            "{} 容器：{} → {}（改了 {} 场）\n",
-            label,
-            first.replace('T', " "),
-            last.replace('T', " "),
-            changed
-        ));
-
-        // 自检：同一支队相邻两场比赛的间隔天数（含段间休息）。
-        // 目标是每队至少隔 1 天（gap >= 2），绝不允许连打两天。
-        let mut team_days: HashMap<usize, Vec<i64>> = HashMap::new();
-        for i in 0..45 {
-            let mid = mids[idx][i];
-            let seg = (i / 15) as i64;
-            let offset = i as i64 + seg * REGROUP_GAP_DAYS;
-            for field in ["team1", "team2"] {
-                if let Some(t) = match_team(ctx, mid, field) {
-                    team_days.entry(t).or_default().push(offset);
-                }
-            }
-        }
-        let mut min_gap = i64::MAX;
-        let mut back_to_back = 0usize;
-        for (_, days) in team_days {
-            let mut ds = days;
-            ds.sort_unstable();
-            for w in ds.windows(2) {
-                let gap = w[1] - w[0];
-                min_gap = min_gap.min(gap);
-                if gap < 2 {
-                    back_to_back += 1;
-                }
-            }
-        }
-        if min_gap == i64::MAX {
-            min_gap = 0;
-        }
-        log.push_str(&format!(
-            "  同队相邻比赛最小间隔 {} 天，连打 {} 处\n",
-            min_gap, back_to_back
-        ));
     }
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_dates.txt", &log);
 }
 
 /// 读某容器第 n 轮保存下来的「真实参赛 6 队名次」（逗号分隔 team id）。
@@ -4265,16 +2624,7 @@ fn maybe_draw_groups(ctx: &mut StableServerCtx<'_>) {
         .into_iter()
         .filter(|&t| is_filler_team(&team_name(ctx, t)))
         .collect();
-    let mut log = String::from("=== KPL 第一轮抽签 ===\n");
-    log.push_str(&format!(
-        "真队 {} 支，挂名队 {} 支（season_tag={}）\n",
-        reals.len(),
-        fillers.len(),
-        season_tag
-    ));
     if reals.len() != 18 || fillers.len() != 12 {
-        log.push_str("SKIP：需要 18 真队 + 12 挂名队\n");
-        let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_draw.txt", &log);
         return;
     }
 
@@ -4293,22 +2643,13 @@ fn maybe_draw_groups(ctx: &mut StableServerCtx<'_>) {
     for i in 0..3 {
         let mut rows = groups[i].clone();
         rows.extend_from_slice(&fgroups[i]);
-        let st_ok = write_standings_raw(ctx, cids[i], &rows);
-        let mut moved = 0usize;
+        write_standings_raw(ctx, cids[i], &rows);
         if let Some(lid) = league_id_by_name(ctx, league_names[i]) {
+            let lid = lid.to_string();
             for &t in &rows {
-                if ctx.record_set_json(RecordKindV1::Team, t, "league_id", &lid.to_string()) {
-                    moved += 1;
-                }
+                ctx.record_set_json(RecordKindV1::Team, t, "league_id", &lid);
             }
         }
-        log.push_str(&format!(
-            "{}：{}（standings={}，league_id {}/10）\n",
-            labels[i],
-            team_names(ctx, &groups[i]),
-            st_ok,
-            moved
-        ));
     }
 
     // ② K甲 归位：引擎原生升降级可能把真队降进 K甲、把青训队升进 S/A/B。
@@ -4319,7 +2660,6 @@ fn maybe_draw_groups(ctx: &mut StableServerCtx<'_>) {
         .collect();
     let kgl_lid = league_id_by_name(ctx, "TACJ2");
     let assigned: HashSet<usize> = reals.iter().chain(fillers.iter()).copied().collect();
-    let mut back = 0usize;
     if let Some(kgl_lid) = kgl_lid {
         for t in ctx.record_ids(RecordKindV1::Team) {
             if assigned.contains(&t) {
@@ -4333,12 +2673,10 @@ fn maybe_draw_groups(ctx: &mut StableServerCtx<'_>) {
                 if !is_real_kpl(&name) && !is_filler_team(&name) {
                     let _ = ctx
                         .record_set_json(RecordKindV1::Team, t, "league_id", &kgl_lid.to_string());
-                    back += 1;
                 }
             }
         }
     }
-    log.push_str(&format!("K甲 归位 {} 队\n", back));
 
     // ③ K甲 的 standings / 赛程也按归位后的 10 队重写（若发生过升降级，原
     //    competition 里可能混进真队/丢了青训队）。
@@ -4361,18 +2699,14 @@ fn maybe_draw_groups(ctx: &mut StableServerCtx<'_>) {
             .collect();
         kgl.sort_unstable();
         if kgl.len() == 10 {
-            let st_ok = write_standings_raw(ctx, cid, &kgl);
-            let mut ok = 0usize;
+            write_standings_raw(ctx, cid, &kgl);
             if let Some(m) = comp_mids(ctx, cid) {
                 for (k, &(a, b)) in rr_all_pairs(&kgl).iter().enumerate().take(45) {
-                    if k < m.len() && set_match_teams(ctx, m[k], a, b) {
-                        ok += 1;
+                    if k < m.len() {
+                        set_match_teams(ctx, m[k], a, b);
                     }
                 }
             }
-            log.push_str(&format!("K甲 standings={} 赛程={}/45\n", st_ok, ok));
-        } else {
-            log.push_str(&format!("K甲 SKIP：队数 {}\n", kgl.len()));
         }
         break;
     }
@@ -4397,9 +2731,7 @@ fn maybe_draw_groups(ctx: &mut StableServerCtx<'_>) {
     for tid in all_real_kpl_team_ids(ctx) {
         ctx.news_push(tid, &title, &content, "KPL");
     }
-    log.push_str(&content);
     ctx.save_set_string(&done_key, "1");
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_draw.txt", &log);
 }
 
 /// 取 standings 里某队的**原始成绩对象**（保留 kill/death/assist 等所有字段，
@@ -4720,13 +3052,6 @@ fn maybe_fill_b_playoffs(ctx: &mut StableServerCtx<'_>) {
     }
     po.extend(added.iter().copied());
     set_comp_playoffs(ctx, c.b, &po);
-    let _ = std::fs::write(
-        "C:/Users/Y/Desktop/kpl_sab_rankfill.txt",
-        format!(
-            "B 组季后赛补槽：comp {} league {} 槽位={} 覆盖队伍={:?}\n追加比赛={:?}\n",
-            c.b, lid, po.len(), covered, added
-        ),
-    );
 }
 
 /// 把某容器的 standings key 集合整体换成 teams（全部 0-0）。
@@ -4933,14 +3258,13 @@ fn apply_card_groups(
     mids: &[Vec<usize>],
     groups: &[[usize; 6]; 3],
     season_tag: usize,
-    log: &mut String,
 ) -> bool {
     let labels = ["S", "A", "B"];
     let league_names = ["TACC", "TACC2", "TACJ"];
     let mut all_ok = true;
     for i in 0..3 {
         let (ok, total) = write_segment(ctx, &mids[i], 2 * RR_PER_ROUND, &groups[i]);
-        let (moved, st_ok, lid) =
+        let (_moved, st_ok, _lid) =
             move_group_to_container(ctx, cids[i], league_names[i], &groups[i]);
         ctx.save_set_string(
             &format!("rr_group_{}_{}_2", season_tag, labels[i]),
@@ -4953,16 +3277,6 @@ fn apply_card_groups(
         if ok != total || !st_ok {
             all_ok = false;
         }
-        log.push_str(&format!(
-            "第三轮{}组：{}  → 槽位 30-44 成功 {}/{}；league_id -> {:?}（{}/6），standings 6 队 = {}\n",
-            labels[i],
-            team_names(ctx, &groups[i]),
-            ok,
-            total,
-            lid,
-            moved,
-            st_ok
-        ));
     }
     ctx.save_set_string(&format!("move_done_{}_2", season_tag), "1");
     all_ok
@@ -5100,11 +3414,6 @@ fn maybe_cards(ctx: &mut StableServerCtx<'_>) {
     let round3_started = mids
         .iter()
         .any(|v| v[30..45].iter().any(|m| is_played(ctx, *m)));
-    let mut log = String::from("=== SAB 第二轮卡位赛 ===\n");
-    log.push_str(&format!(
-        "已打 S={} A={} B={}，第三轮已开打={}\n",
-        played[0], played[1], played[2], round3_started
-    ));
 
     if ctx.save_get_string(&setup_key).is_none() {
         // 安全：没有布置记录却有多余 Match 引用（上次写到一半崩溃）→ 先摘掉
@@ -5118,36 +3427,26 @@ fn maybe_cards(ctx: &mut StableServerCtx<'_>) {
         }
         // 还没到 30 场，或第三轮已经开打（来不及插卡位赛）→ 不动
         if played.iter().any(|&p| p < 2 * RR_PER_ROUND) || round3_started {
-            let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_cards.txt", &log);
             return;
         }
         // 老档可能已经写了第三轮分组；新档由这里写。只要有任一槽位已打就不动。
         let Some(s_rank) = saved_rank(ctx, cids[0], 2) else {
-            log.push_str("缺 S 组第二轮名次快照，等待\n");
-            let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_cards.txt", &log);
             return;
         };
         let Some(a_rank) = saved_rank(ctx, cids[1], 2) else {
-            log.push_str("缺 A 组第二轮名次快照，等待\n");
-            let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_cards.txt", &log);
             return;
         };
         let Some(b_rank) = saved_rank(ctx, cids[2], 2) else {
-            log.push_str("缺 B 组第二轮名次快照，等待\n");
-            let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_cards.txt", &log);
             return;
         };
         let Some((prov_s, prov_a, prov_b)) = new_groups(2, &s_rank, &a_rank, &b_rank) else {
-            log.push_str("名次不足 6 队，等待\n");
-            let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_cards.txt", &log);
             return;
         };
         let provisional = [prov_s, prov_a, prov_b];
         // ① 先把临时第三轮分组落盘（保证 3/17 第三轮能开打）
-        apply_card_groups(ctx, &cids, &mids, &provisional, season_tag, &mut log);
+        apply_card_groups(ctx, &cids, &mids, &provisional, season_tag);
         // ② 旧的两轮标练习赛（赛程页尽量不再显示旧组对阵）
-        let hidden = mark_practice_slots(ctx, &mids, 2 * RR_PER_ROUND);
-        log.push_str(&format!("标记已打完的 0-29 槽位为练习赛：{} 场\n", hidden));
+        mark_practice_slots(ctx, &mids, 2 * RR_PER_ROUND);
         // ③ 借 4 场孤儿 Match 改成 BO7
         let pairs = [
             (s_rank[4], a_rank[1]), // S5 vs A2
@@ -5157,12 +3456,7 @@ fn maybe_cards(ctx: &mut StableServerCtx<'_>) {
         ];
         let card_mids = find_orphan_matches(ctx, 4);
         if card_mids.len() != 4 {
-            log.push_str(&format!(
-                "⚠️ 只找到 {}/4 场孤儿 Match，卡位赛跳过（保留临时分组）\n",
-                card_mids.len()
-            ));
             ctx.save_set_string(&done_key, "1");
-            let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_cards.txt", &log);
             return;
         }
         // 日期：第三轮首场前 4 天开始，但不能早于当前最新已打日期 +1。
@@ -5201,14 +3495,7 @@ fn maybe_cards(ctx: &mut StableServerCtx<'_>) {
             .map(|r3| dates.last().map_or(true, |d| d.as_str() >= r3.as_str()))
             .unwrap_or(false);
         if no_room {
-            log.push_str(&format!(
-                "⚠️ 卡位赛日期 {}..{} 与第三轮首场 {} 冲突，跳过（保留临时分组）\n",
-                dates.first().cloned().unwrap_or_default(),
-                dates.last().cloned().unwrap_or_default(),
-                r3_day.unwrap_or_default()
-            ));
             ctx.save_set_string(&done_key, "1");
-            let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_cards.txt", &log);
             return;
         }
         for (i, &mid) in card_mids.iter().enumerate() {
@@ -5242,12 +3529,7 @@ fn maybe_cards(ctx: &mut StableServerCtx<'_>) {
                 .join(";"),
         );
         ctx.save_set_string(&setup_key, "1");
-        log.push_str(&format!(
-            "布置卡位赛：{:?}，日期 {:?}，追加到 comp {} matches 尾部\n",
-            card_mids, dates, cids[0]
-        ));
         notify_cards_scheduled(ctx, &pairs, &dates);
-        let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_cards.txt", &log);
         return;
     }
 
@@ -5265,33 +3547,12 @@ fn maybe_cards(ctx: &mut StableServerCtx<'_>) {
         .flat_map(|p| p.split(',').filter_map(|x| x.trim().parse::<usize>().ok()))
         .collect();
     if card_mids.len() != 4 || pair_ids.len() != 8 {
-        log.push_str("卡位赛记录损坏，放弃\n");
         ctx.save_set_string(&done_key, "1");
-        let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_cards.txt", &log);
         return;
     }
     let pairs: Vec<(usize, usize)> = pair_ids.chunks(2).map(|c| (c[0], c[1])).collect();
     let results: Vec<Option<(usize, i64, i64)>> =
         card_mids.iter().map(|&m| match_result(ctx, m)).collect();
-    for (i, &m) in card_mids.iter().enumerate() {
-        let (x, y) = pairs[i];
-        let d = ctx
-            .record_get_string(RecordKindV1::Match, m, "date")
-            .unwrap_or_default();
-        let st = ctx
-            .record_get_json(RecordKindV1::Match, m, "running_state")
-            .unwrap_or_default();
-        log.push_str(&format!(
-            "卡位赛{} #{} {} vs {} date={} state={} result={:?}\n",
-            i + 1,
-            m,
-            team_name(ctx, x),
-            team_name(ctx, y),
-            d,
-            st,
-            results[i]
-        ));
-    }
     let all_end = results.iter().all(Option::is_some);
 
     if all_end {
@@ -5313,31 +3574,23 @@ fn maybe_cards(ctx: &mut StableServerCtx<'_>) {
                 .all(|v| v[30..45].iter().all(|m| !is_played(ctx, *m)));
         if can_rewrite {
             if let Some(g) = &final_groups {
-                apply_card_groups(ctx, &cids, &mids, g, season_tag, &mut log);
-                log.push_str("卡位赛结果已写入第三轮分组\n");
+                apply_card_groups(ctx, &cids, &mids, g, season_tag);
             }
-        } else {
-            log.push_str("第三轮已开打，保留临时分组（卡位赛结果只发新闻）\n");
         }
         notify_card_results(ctx, &pairs, &res, if can_rewrite { final_groups.as_ref() } else { None });
         remove_card_matches(ctx, cids[0], &card_mids);
         ctx.save_set_string(&done_key, "1");
         ctx.save_set_string(&format!("regroup_done_{}_2", season_tag), "1");
-        let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_cards.txt", &log);
         return;
     }
 
     if round3_started {
         // 4 场没打完第三轮就开了：放弃卡位赛，保留临时分组
-        log.push_str("第三轮已开打但卡位赛未打完，放弃（保留临时分组）\n");
         remove_card_matches(ctx, cids[0], &card_mids);
         notify_card_results(ctx, &pairs, &[], None);
         ctx.save_set_string(&done_key, "1");
         ctx.save_set_string(&format!("regroup_done_{}_2", season_tag), "1");
-    } else {
-        log.push_str("等待 4 场卡位赛打完\n");
     }
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_cards.txt", &log);
 }
 
 /// 边界检查 + 执行重分组。只有三组都跨过边界才动作；每轮只做一次
@@ -5360,43 +3613,31 @@ fn maybe_regroup(ctx: &mut StableServerCtx<'_>) {
         mids.push(v);
     }
     let season_tag = mids[0][0];
-    let mut log = String::from("=== SAB 重分组 ===\n");
-    log.push_str(&format!("已打场次 S={} A={} B={}\n", played[0], played[1], played[2]));
 
     for (round, boundary) in [(1usize, RR_PER_ROUND), (2usize, 2 * RR_PER_ROUND)] {
         // 第二轮的第三轮分组由卡位赛流程（maybe_cards）负责：先写临时分组，
         // 4 场 BO7 打完后再改成最终分组。这里不要直接按名次定死。
         if round == 2 && CARD_MATCHES {
-            log.push_str("round 2: 由卡位赛流程处理\n");
             continue;
         }
         let done_key = format!("regroup_done_{}_{}", season_tag, round);
         if ctx.save_get_string(&done_key).is_some() {
-            log.push_str(&format!("round {}: 已完成\n", round));
             continue;
         }
         if played.iter().any(|&p| p < boundary) {
-            log.push_str(&format!(
-                "round {}: 等待三组都到 {} 场（当前 {}）\n",
-                round, boundary, played.iter().map(|p| p.to_string()).collect::<Vec<_>>().join("/")
-            ));
             continue;
         }
         // 名次快照必须三组都在（每组的 15 场边界触发 maybe_reset_rounds 时写入）
         let Some(s_rank) = saved_rank(ctx, cids[0], round) else {
-            log.push_str(&format!("round {}: 缺 S 组名次快照，跳过\n", round));
             continue;
         };
         let Some(a_rank) = saved_rank(ctx, cids[1], round) else {
-            log.push_str(&format!("round {}: 缺 A 组名次快照，跳过\n", round));
             continue;
         };
         let Some(b_rank) = saved_rank(ctx, cids[2], round) else {
-            log.push_str(&format!("round {}: 缺 B 组名次快照，跳过\n", round));
             continue;
         };
         let Some((ns, na, nb)) = new_groups(round, &s_rank, &a_rank, &b_rank) else {
-            log.push_str(&format!("round {}: 名次不足 6 队，跳过\n", round));
             continue;
         };
         let start = boundary;
@@ -5404,48 +3645,26 @@ fn maybe_regroup(ctx: &mut StableServerCtx<'_>) {
             .iter()
             .any(|m| m[start..start + 15].iter().any(|x| is_played(ctx, *x)));
         if blocked {
-            log.push_str(&format!(
-                "round {}: 下一段 ({}-{}) 已有比赛，跳过（三组不同步，请检查日期对齐）\n",
-                round,
-                start,
-                start + 14
-            ));
             continue;
         }
         let groups = [&ns, &na, &nb];
         let league_names = ["TACC", "TACC2", "TACJ"];
         for i in 0..3 {
-            let (ok, total) = write_segment(ctx, &mids[i], start, groups[i]);
+            write_segment(ctx, &mids[i], start, groups[i]);
             // 路 B（实验）：把队伍真正搬进新联赛，并换掉 standings 的 key 集合，
             // 让 UI 的积分表/队伍归属跟实际分组一致。
             if MOVE_TEAMS_EXPERIMENT {
-                let (moved, st_ok, lid) =
-                    move_group_to_container(ctx, cids[i], league_names[i], groups[i]);
-                log.push_str(&format!(
-                    "round {} 搬{}组：league_id -> {:?}（{}/6 队），standings 换 key = {}\n",
-                    round, labels[i], lid, moved, st_ok
-                ));
+                move_group_to_container(ctx, cids[i], league_names[i], groups[i]);
             }
-            // 记录本容器这一轮的 6 队（下一轮名次/dump 用）
+            // 记录本容器这一轮的 6 队（下一轮名次用）
             ctx.save_set_string(
                 &format!("rr_group_{}_{}_{}", season_tag, labels[i], round),
                 &groups[i].iter().map(|t| t.to_string()).collect::<Vec<_>>().join(","),
             );
-            log.push_str(&format!(
-                "round {} 新{}组：{}  → 写槽位 {}-{} 成功 {}/{}\n",
-                round,
-                labels[i],
-                team_names(ctx, groups[i]),
-                start,
-                start + 14,
-                ok,
-                total
-            ));
         }
         // 第一轮打完：把 0-14 槽位标成练习赛，尽量让赛程页不再列旧组对阵
         if round == 1 {
-            let hidden = mark_practice_slots(ctx, &mids, RR_PER_ROUND);
-            log.push_str(&format!("第一轮 0-14 槽位标练习赛：{} 场\n", hidden));
+            mark_practice_slots(ctx, &mids, RR_PER_ROUND);
             // 第一轮结束 → 显示名从「一组/二组/三组」切回「S组/A组/B组」。
             set_sab_display(ctx);
         }
@@ -5455,9 +3674,7 @@ fn maybe_regroup(ctx: &mut StableServerCtx<'_>) {
             ctx.save_set_string(&format!("move_done_{}_{}", season_tag, round), "1");
         }
         ctx.save_set_string(&done_key, "1");
-        log.push_str(&format!("round {}: 完成\n", round));
     }
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_regroup.txt", &log);
 }
 
 /// 路 B 的补搬：老档里重分组已经只改了 Match（路 A），没有搬队。
@@ -5474,7 +3691,6 @@ fn maybe_repair_moves(ctx: &mut StableServerCtx<'_>) {
     let league_names = ["TACC", "TACC2", "TACJ"];
     let Some(mids0) = comp_mids(ctx, cids[0]) else { return };
     let Some(&season_tag) = mids0.first() else { return };
-    let mut log = String::from("=== 路 B 补搬（老档重分组）===\n");
     for round in 1usize..=2 {
         let done_key = format!("move_done_{}_{}", season_tag, round);
         if ctx.save_get_string(&done_key).is_some() {
@@ -5515,23 +3731,15 @@ fn maybe_repair_moves(ctx: &mut StableServerCtx<'_>) {
             parsed.push([ids[0], ids[1], ids[2], ids[3], ids[4], ids[5]]);
         }
         if parsed.len() != 3 {
-            log.push_str(&format!("round {}: 缺分组记录，跳过\n", round));
             continue;
         }
         for i in 0..3 {
-            let (moved, st_ok, lid) =
-                move_group_to_container(ctx, cids[i], league_names[i], &parsed[i]);
-            log.push_str(&format!(
-                "round {} 搬{}组：league_id -> {:?}（{}/6 队），standings 换 key = {}\n",
-                round, labels[i], lid, moved, st_ok
-            ));
+            move_group_to_container(ctx, cids[i], league_names[i], &parsed[i]);
         }
         let refs = [&parsed[0], &parsed[1], &parsed[2]];
         notify_regroup(ctx, round, &refs);
         ctx.save_set_string(&done_key, "1");
-        log.push_str(&format!("round {}: 补搬完成\n", round));
     }
-    let _ = std::fs::write("C:/Users/Y/Desktop/kpl_sab_repair.txt", &log);
 }
 
 /// 重分组结果 push 成新闻（每轮一次）。标题写清是**下一轮**的分组，
@@ -5572,7 +3780,6 @@ fn maybe_sab_seed(ctx: &mut StableServerCtx<'_>) {
         return;
     }
     record_last_season(ctx);
-    dump_sab(ctx);
     // 第一轮分组的新闻改由 maybe_draw_groups 用「一组/二组/三组」推送。
     ctx.save_set_string("sab_seed_type", &ty);
 }
@@ -5588,8 +3795,6 @@ impl StableServerExtension for KplNaming {
         fix_roles(ctx);
         rename_bench(ctx);
         rename_cn_all(ctx);
-        dump_structure(ctx);
-        dump_athletes(ctx);
         set_bo(ctx);
         zero_ab_prizes(ctx);
         // 新档进档：本档还没开打就抽签（18 真队随机分一组/二组/三组）。
@@ -5608,12 +3813,6 @@ impl StableServerExtension for KplNaming {
         maybe_swap_cup_fillers(ctx);
         maybe_repair_moves(ctx);
         maybe_restore_fillers(ctx);
-        dump_sab(ctx);
-        dump_r6(ctx);
-        dump_rounds(ctx);
-        dump_leagues_teams(ctx);
-        dump_promotion_cup(ctx);
-        dump_playoffs(ctx);
     }
 
     /// 每个管理 tick 开始前重写一遍季后赛对阵：引擎若在季后赛轮次事件里重新播种
@@ -5632,9 +3831,6 @@ impl StableServerExtension for KplNaming {
         maybe_fix_cup_allocation(ctx);
         // 抽签在 tick 里完成；下一次 tick 开始时就能把挂名队换成真队。
         maybe_swap_cup_fillers(ctx);
-        dump_predraw(ctx);
-        dump_world_probe(ctx);
-        dump_seed_table();
     }
 
     fn after_management_tick(&self, ctx: &mut StableServerCtx<'_>) {
@@ -5663,13 +3859,6 @@ impl StableServerExtension for KplNaming {
                     maybe_cards(ctx);
                     maybe_playoffs(ctx);
                     maybe_repair_moves(ctx);
-                    dump_schedule(ctx);
-                    dump_sab(ctx);
-                    dump_r6(ctx);
-                    dump_rounds(ctx);
-                    dump_promotion_cup(ctx);
-                    dump_leagues_teams(ctx);
-                    dump_playoffs(ctx);
                 }
                 Some(ManagementEventKindV1::MatchFinished) => {
                     maybe_reset_rounds(ctx);
@@ -5677,18 +3866,13 @@ impl StableServerExtension for KplNaming {
                     maybe_cards(ctx);
                     maybe_playoffs(ctx);
                     maybe_restore_fillers(ctx);
-                    dump_live(ctx);
-                    dump_sab(ctx);
-                    dump_r6(ctx);
-                    dump_rounds(ctx);
-                    dump_promotion_cup(ctx);
-                    dump_leagues_teams(ctx);
-                    dump_playoffs(ctx);
+                }
+                // 转会完成后可能有新选手进入 CN 赛区，补一次中文名/查重。
+                Some(ManagementEventKindV1::TransferCompleted) => {
+                    rename_cn_all(ctx);
                 }
                 _ => {}
             }
-            // 新生成的选手（转会、青训、赛季刷新）也统一成 KPL 中文名。
-            rename_cn_all(ctx);
         }
         CURSOR.store(nc, Ordering::SeqCst);
     }
