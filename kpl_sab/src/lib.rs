@@ -4431,6 +4431,7 @@ struct PoState {
     in_game: bool,
     open: bool,
     frames: u64,
+    built: bool,
     dirty: bool,
     fail: u32,
     handlers: bool,
@@ -4455,6 +4456,7 @@ fn po_tick(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>) {
             if s.in_game {
                 s.in_game = false;
                 s.open = false;
+                s.built = false;
                 s.fail = 0;
             }
             return;
@@ -4543,13 +4545,17 @@ fn po_ensure_ui(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>) {
             return;
         }
     }
-    for slot in 0..PO_ROWS {
-        let path = format!("{shell}.r{slot}");
-        if ctx.ui_exists(&path) {
-            continue;
+    // 16 张卡各自是一棵子树；建好一次后不再每帧探测（ui_exists 是跨 host 调用）。
+    let need_rows = !st.lock().unwrap().built;
+    if need_rows {
+        let mut all = true;
+        for slot in 0..PO_ROWS {
+            if !po_spawn_tree(ctx, &shell, &po_row_src(slot)) {
+                all = false;
+            }
         }
-        if !po_spawn_tree(ctx, &shell, &po_row_src(slot)) {
-            return;
+        if all && ctx.ui_exists(&format!("{shell}.r{}.team1.score", PO_ROWS - 1)) {
+            st.lock().unwrap().built = true;
         }
     }
     let close_path = format!("{shell}.header.close");
@@ -4855,6 +4861,7 @@ fn init(host: &StableHost) -> StableMod {
             in_game: false,
             open: false,
             frames: 0,
+            built: false,
             dirty: false,
             fail: 0,
             handlers: false,
