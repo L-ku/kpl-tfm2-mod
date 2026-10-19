@@ -2165,7 +2165,7 @@ fn maybe_playoffs(ctx: &mut StableServerCtx<'_>) {
     if first {
         ctx.save_set_string(&built_key, "1");
     }
-    if first_news {
+    if first_news && !(po_mids.iter().all(|m| is_played(ctx, *m))) {
         ctx.save_set_string(&news_key, "1");
         // 完整 16 场对阵（全部轮次 + 日期），不是摘要。第一轮对阵已知，
         // 后续轮次写「胜者/负者」，打完由每日战报补齐。
