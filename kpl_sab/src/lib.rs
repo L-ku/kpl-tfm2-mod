@@ -1899,6 +1899,14 @@ fn po_line(ctx: &StableServerCtx<'_>, mid: usize, label: &str, with_score: bool)
     }
 }
 
+/// 赛季开始（读档 / 赛季滚动）时清掉上一届的赛程面板数据，避免常规赛期间
+/// 「季后赛」面板还挂着上赛季的 16 场对阵。真正开季后 maybe_playoffs 会重新写入。
+fn clear_po_board(ctx: &mut StableServerCtx<'_>) {
+    if ctx.save_contains_key(PO_BOARD_KEY) {
+        ctx.save_remove_key(PO_BOARD_KEY);
+    }
+}
+
 /// 把完整 16 场赛程写进存档（客户端面板的数据源）。幂等：内容没变就不写。
 fn publish_po_board(
     ctx: &mut StableServerCtx<'_>,
@@ -4041,6 +4049,7 @@ impl StableServerExtension for KplNaming {
         maybe_reset_rounds(ctx);
         maybe_regroup(ctx);
         maybe_cards(ctx);
+        clear_po_board(ctx);
         maybe_playoffs(ctx);
         // 抽签之后把杯赛里的挂名队/重复队换成没进杯赛的真队（只改杯赛记录）。
         maybe_swap_cup_fillers(ctx);
@@ -4095,6 +4104,7 @@ impl StableServerExtension for KplNaming {
                     maybe_reset_rounds(ctx);
                     maybe_regroup(ctx);
                     maybe_cards(ctx);
+                    clear_po_board(ctx);
                     maybe_playoffs(ctx);
                     maybe_repair_moves(ctx);
                 }
