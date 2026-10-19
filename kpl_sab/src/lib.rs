@@ -15,136 +15,147 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 static START_DONE: AtomicBool = AtomicBool::new(false);
 static CURSOR: AtomicU64 = AtomicU64::new(0);
 
-// (name, age, ovr)
-type P = (&'static str, i64, i64);
+// (name, age, ovr, potential)
+//
+// 名单来自 ModelScope「2026KPL大名单选手信息」数据集的 2026 夏季赛（18 队 163 人，
+// 采集自 kpl.qq.com）。这里只取 KPL 的 16 支队；KLG / 情久是 K 甲队，数据里没有，
+// 保留手工名单。SYG / WST / TCG（无锡）不在 mod 的 16 队里，数据也被跳过。
+//
+// ovr 由真实赛季数据折算：KDA 排名 45% + 分均伤害排名 35% + 胜率 20%。数据里的
+// 排名是官方「同位置排名」，但 KDA 排名 1-104、伤害排名 1-84 是全局唯一的，因此
+// 直接按全样本归一。0 局上场或数据缺失的按替补处理（66-68），不参与折算。
+//
+// pot 是随机值（不是公式），只按年龄卡涨幅上限：年轻能涨得多、老将基本到顶。
+type P = (&'static str, i64, i64, i64);
 
 fn roster_for(team: &str) -> Option<[&'static [P]; 5]> {
     match team {
         "成都AG超玩会" => Some([
-            &[("轩染", 22, 86)],
-            &[("钟意", 22, 82), ("染详", 21, 72)],
-            &[("长生", 22, 87)],
-            &[("小麦", 21, 72), ("一诺", 25, 89)],
-            &[("大帅", 22, 85)],
+            &[("轩染", 21, 71, 86), ("陈穿", 21, 68, 68), ("北诗", 27, 66, 72)],
+            &[("钟意", 22, 80, 93), ("染详", 19, 68, 71)],
+            &[("长生", 22, 85, 96)],
+            &[("一诺", 25, 81, 94), ("小麦", 21, 68, 74)],
+            &[("大帅", 23, 83, 84), ("救赎", 24, 66, 70)],
         ]),
         "重庆狼队" => Some([
-            &[("清清", 24, 85)],
-            &[("皖皖", 21, 81)],
-            &[("紫幻", 20, 82)],
-            &[("道崽", 20, 82)],
-            &[("信", 21, 80)],
+            &[("清清", 24, 75, 83), ("文涛", 20, 68, 70)],
+            &[("皖皖", 21, 80, 99), ("小团", 18, 68, 85)],
+            &[("紫幻", 23, 84, 87)],
+            &[("道崽", 21, 87, 88), ("小叶", 18, 68, 83)],
+            &[("信", 21, 86, 99), ("心决", 19, 68, 77)],
         ]),
         "武汉eStarPro" => Some([
-            &[("海棠", 21, 80)],
-            &[("小楼", 20, 80)],
-            &[("Ming", 21, 80)],
-            &[("鸣鸣", 20, 80)],
-            &[("小A", 21, 80)],
+            &[("海棠", 18, 68, 72), ("浅风", 19, 68, 70), ("Fly", 26, 63, 71)],
+            &[("小楼", 21, 70, 89), ("余忆", 23, 65, 75)],
+            &[("Ming", 23, 78, 92)],
+            &[("亮宇", 21, 86, 99), ("鸣鸣", 21, 68, 73)],
+            &[("小A", 25, 82, 87)],
         ]),
         "北京WB" => Some([
-            &[("樱花", 20, 79), ("梓墨", 23, 72)],
-            &[("安凉", 21, 80), ("暖阳", 24, 82)],
-            &[("果冻", 20, 80), ("听悦", 21, 72)],
-            &[("昭珏", 20, 80)],
-            &[("一笙", 21, 84)],
+            &[("梓墨", 22, 80, 93), ("樱花", 20, 68, 68)],
+            &[("安凉", 20, 85, 99), ("青剑", 18, 68, 86), ("秋月", 19, 68, 70), ("暖阳", 24, 66, 76)],
+            &[("果冻", 19, 89, 93), ("听悦", 21, 89, 89)],
+            &[("昭珏", 19, 92, 99), ("奕雨", 19, 68, 71)],
+            &[("一笙", 24, 88, 99), ("阿豆", 28, 66, 71)],
         ]),
         "广州TTG" => Some([
-            &[("小泽", 21, 80), ("萝卜", 22, 89)],
-            &[("小胖", 21, 87)],
-            &[("鹤辞", 20, 83)],
-            &[("小雪", 20, 87)],
-            &[("涛", 21, 80), ("涵", 20, 72)],
+            &[("萝卜", 21, 78, 86), ("小泽", 20, 68, 81)],
+            &[("小胖", 22, 83, 90), ("佳心", 21, 68, 68)],
+            &[("鹤辞", 21, 87, 99)],
+            &[("小雪", 19, 91, 99), ("月月", 18, 68, 72)],
+            &[("涵", 19, 81, 99)],
         ]),
         "佛山DRG" => Some([
-            &[("花缘", 21, 80)],
-            &[("小小阳", 20, 80)],
-            &[("早点", 21, 80)],
-            &[("梦岚", 22, 82)],
-            &[("子阳", 23, 82)],
+            &[("花缘", 20, 67, 88)],
+            &[("小小阳", 19, 75, 86)],
+            &[("柚子", 20, 81, 86), ("早点", 22, 68, 76), ("花椒", 19, 68, 87)],
+            &[("梦岚", 22, 80, 85)],
+            &[("子阳", 25, 72, 73), ("呆呆", 21, 68, 83), ("源", 24, 66, 77)],
         ]),
         "苏州KSG" => Some([
-            &[("无言", 21, 80)],
-            &[("句号", 20, 80)],
-            &[("流浪", 20, 82)],
-            &[("小屿", 21, 80)],
-            &[("晚星", 22, 80), ("烈峰峰", 20, 72)],
+            &[("无言", 19, 83, 99), ("绝境", 18, 68, 91)],
+            &[("句号", 20, 82, 91), ("雨溪", 20, 68, 87)],
+            &[("流浪", 22, 91, 99), ("小凡", 22, 68, 86)],
+            &[("小屿", 19, 91, 99)],
+            &[("晚星", 24, 87, 96), ("烈峰峰", 19, 68, 94)],
         ]),
         "济南RW侠" => Some([
-            &[("归期", 22, 82)],
-            &[("今屿", 23, 82)],
-            &[("挽墨", 21, 80)],
-            &[("小俞", 21, 86)],
-            &[("梦溪", 20, 80)],
+            &[("归期", 21, 71, 89), ("牛牛", 21, 68, 77), ("剑樱", 19, 68, 73)],
+            &[("今屿", 25, 77, 89)],
+            &[("挽墨", 21, 83, 93)],
+            &[("小俞", 21, 84, 99), ("铃离", 19, 68, 88), ("佩恩", 24, 66, 67)],
+            &[("梦溪", 22, 80, 82)],
         ]),
         "上海EDG.M" => Some([
-            &[("流星", 21, 80)],
-            &[("夏凌", 21, 80)],
-            &[("花卷", 25, 82)],
-            &[("风箫", 22, 84)],
-            &[("绝心", 21, 80), ("小碎", 20, 72)],
+            &[("流星", 21, 73, 94)],
+            &[("夏凌", 22, 72, 88)],
+            &[("花卷", 25, 81, 87), ("月秋", 20, 68, 68), ("橙果", 19, 68, 77)],
+            &[("风箫", 22, 83, 99), ("凌云", 20, 68, 86)],
+            &[("小碎", 19, 81, 99), ("绝心", 20, 68, 79)],
         ]),
         "南通Hero久竞" => Some([
-            &[("坦然", 22, 82)],
-            &[("落尘", 21, 80)],
-            &[("清弦", 20, 80)],
-            &[("妖刀", 24, 82)],
-            &[("紫渊", 20, 80)],
+            &[("坦然", 23, 76, 83), ("晨沉", 18, 68, 91)],
+            &[("落尘", 21, 82, 82)],
+            &[("玖熙", 20, 85, 87), ("清弦", 19, 74, 78)],
+            &[("Silver", 22, 85, 89), ("妖刀", 25, 84, 95)],
+            &[("白清", 21, 80, 94), ("紫渊", 21, 68, 82)],
         ]),
         "深圳DYG" => Some([
-            &[("小乐", 21, 80)],
-            &[("方羽", 20, 80)],
-            &[("向鱼", 23, 81)],
-            &[("钎城", 23, 80)],
-            &[("落空", 20, 80)],
+            &[("栋栋", 21, 68, 81), ("小乐", 22, 64, 83)],
+            &[("小轩", 21, 68, 91), ("方羽", 18, 67, 74)],
+            &[("向鱼", 24, 74, 80)],
+            &[("钎城", 24, 79, 81), ("秋源", 20, 68, 84)],
+            &[("落空", 22, 73, 81), ("叶凡", 19, 68, 85)],
         ]),
         "北京JDG" => Some([
-            &[("光明", 21, 80)],
-            &[("无双", 21, 80)],
-            &[("清融", 23, 85), ("昊昊", 21, 72)],
-            &[("小寒", 21, 80)],
-            &[("无畏", 24, 82)],
+            &[("光明", 19, 79, 89), ("轻语", 22, 68, 72)],
+            &[("无双", 21, 78, 89)],
+            &[("清融", 23, 87, 99), ("昊昊", 19, 68, 85)],
+            &[("小寒", 19, 88, 99), ("零栩", 23, 68, 75)],
+            &[("无畏", 25, 83, 87), ("扩恬", 18, 68, 72)],
         ]),
         "杭州LGD.NBW" => Some([
-            &[("小落", 21, 81)],
-            &[("米苏", 20, 80)],
-            &[("九尾", 23, 80)],
-            &[("星尘", 21, 80)],
-            &[("小崽", 20, 80)],
+            &[("小落", 22, 82, 86), ("花花", 20, 68, 73)],
+            &[("米苏", 20, 81, 99), ("断雨", 20, 68, 85)],
+            &[("九尾", 24, 76, 84), ("小名", 20, 68, 76)],
+            &[("小久", 22, 90, 90), ("星尘", 20, 68, 88)],
+            &[("小崽", 23, 80, 90), ("赤辰", 22, 68, 79)],
         ]),
         "上海RNG.M" => Some([
-            &[("小困", 21, 80)],
-            &[("航航", 20, 80)],
-            &[("庆安", 21, 80)],
-            &[("润润", 20, 80)],
-            &[("安尧", 20, 80)],
+            &[("壶神", 21, 68, 91), ("小困", 19, 64, 67)],
+            &[("航航", 19, 70, 85)],
+            &[("雨空", 23, 77, 78)],
+            &[("润润", 20, 74, 81)],
+            &[("涛", 21, 74, 95), ("极光", 22, 68, 69), ("久酷", 26, 66, 70)],
         ]),
         "长沙TES.A" => Some([
-            &[("无幻", 22, 80)],
-            &[("书源", 21, 80)],
-            &[("小七", 21, 80)],
-            &[("蓝桉", 21, 80)],
-            &[("玖欣", 21, 80), ("帆帆", 23, 80)],
+            &[("无幻", 21, 73, 92)],
+            &[("书源", 20, 77, 84)],
+            &[("七", 20, 78, 94), ("景诗", 21, 68, 87), ("筱雨", 19, 68, 72)],
+            &[("蓝桉", 22, 81, 85)],
+            &[("帆帆", 26, 83, 83), ("玖欣", 22, 82, 92)],
         ]),
         "西安WE" => Some([
-            &[("小度", 21, 80)],
-            &[("景云", 21, 80)],
-            &[("开心", 20, 80)],
-            &[("绝意", 21, 80)],
-            &[("九幽", 20, 80)],
+            &[("千云", 19, 68, 68), ("雨晨", 18, 68, 89), ("小度", 22, 67, 76)],
+            &[("子意", 20, 72, 89), ("景云", 21, 68, 81)],
+            &[("明崽", 23, 76, 84)],
+            &[("绝意", 22, 81, 95)],
+            &[("九幽", 21, 77, 90), ("小念", 25, 66, 74)],
         ]),
+        // KLG / 情久是 K 甲队，不在 KPL 大名单数据集里，沿用原来的手工名单。
         "深圳KLG" => Some([
-            &[("沐风", 22, 80), ("阿泽", 20, 72)],
-            &[("夜未", 21, 81)],
-            &[("青崖", 21, 80)],
-            &[("白茶", 21, 80)],
-            &[("老白", 23, 79), ("阿黎", 20, 72)],
+            &[("沐风", 22, 80, 86), ("阿泽", 20, 72, 84)],
+            &[("夜未", 21, 81, 84)],
+            &[("青崖", 21, 80, 85)],
+            &[("白茶", 21, 80, 88)],
+            &[("老白", 23, 79, 80), ("阿黎", 20, 72, 86)],
         ]),
         "桐乡情久" => Some([
-            &[("小年", 21, 80)],
-            &[("云澈", 20, 79)],
-            &[("顾安", 22, 79), ("青禾", 20, 72)],
-            &[("半暖", 21, 80)],
-            &[("拾光", 20, 80)],
+            &[("小年", 21, 80, 85)],
+            &[("云澈", 20, 79, 88)],
+            &[("顾安", 22, 79, 82), ("青禾", 20, 72, 84)],
+            &[("半暖", 21, 80, 86)],
+            &[("拾光", 20, 80, 90)],
         ]),
         _ => None,
     }
@@ -237,13 +248,20 @@ fn team_name_of(ctx: &StableServerCtx<'_>, id: usize) -> Option<String> {
         .and_then(|tid| ctx.record_get_string(RecordKindV1::Team, tid, "name"))
 }
 
-fn apply(ctx: &mut StableServerCtx<'_>, id: usize, name: &str, age: i64, ovr: i64, lane: Lane) {
-    ctx.record_set_string(RecordKindV1::Athlete, id, "name", name);
-    ctx.athlete_set_i64(id, "age", age);
+/// 选手的真实成长上限。游戏里存在 `Athlete.hidden.potential`，训练成长和
+/// 「成长可能性」评级都按它算；球探看到的 `potential_estimate_low/high` 只是
+/// 侦察出来的区间，不动它，这样球探报告仍然是「区间」而不是精确值。
+fn set_potential(ctx: &mut StableServerCtx<'_>, id: usize, pot: i64) {
+    ctx.athlete_set_i64(id, "hidden.potential", pot);
+}
 
+/// 把主分路能力设成 `ovr`，其余 11 项风格值按分路模板等比缩放。
+/// `initial_stat.*` 也一起写，否则游戏里「当前」和「初始」会不一致。
+fn set_stats(ctx: &mut StableServerCtx<'_>, id: usize, ovr: i64, lane: Lane) {
     let scale = ovr as f64 / 80.0;
     ctx.athlete_set_i64(id, lane.stat_path(), ovr);
-    ctx.athlete_set_i64(id, &format!("initial_stat.{}", lane.stat_path().split('.').nth(1).unwrap()), ovr);
+    let field = lane.stat_path().split('.').nth(1).unwrap();
+    ctx.athlete_set_i64(id, &format!("initial_stat.{}", field), ovr);
     for (field, base) in lane.style() {
         let v = ((base as f64 * scale).round() as i64).clamp(0, 100);
         ctx.athlete_set_i64(id, &format!("stat.{}", field), v);
@@ -251,11 +269,26 @@ fn apply(ctx: &mut StableServerCtx<'_>, id: usize, name: &str, age: i64, ovr: i6
     }
 }
 
+fn apply(
+    ctx: &mut StableServerCtx<'_>,
+    id: usize,
+    name: &str,
+    age: i64,
+    ovr: i64,
+    pot: i64,
+    lane: Lane,
+) {
+    ctx.record_set_string(RecordKindV1::Athlete, id, "name", name);
+    ctx.athlete_set_i64(id, "age", age);
+    set_potential(ctx, id, pot);
+    set_stats(ctx, id, ovr, lane);
+}
+
 /// 名单里的某个名字属于哪条分路 + 评分。
 fn roster_lane_of(team: &str, name: &str) -> Option<(usize, i64)> {
     let r = roster_for(team)?;
     for (li, names) in r.iter().enumerate() {
-        for &(n, _age, ovr) in names.iter() {
+        for &(n, _age, ovr, _pot) in names.iter() {
             if n == name {
                 return Some((li, ovr));
             }
@@ -288,7 +321,13 @@ fn rename_china(ctx: &mut StableServerCtx<'_>) {
     }
 
     // 每个队：先认已经改好的名字，再把缺的名单名分给英文默认名选手。
-    for (team, athletes) in &by_team {
+    // 遍历顺序固定成「队名 → athlete id」：HashMap 的随机顺序会让同一个
+    // 名字在不同存档里落到不同选手身上，用户看到的就是「名单不固定」。
+    let mut teams: Vec<(&String, &Vec<(usize, String, Lane)>)> = by_team.iter().collect();
+    teams.sort_by(|a, b| a.0.cmp(b.0));
+    for (team, athletes) in teams {
+        let mut athletes = athletes.clone();
+        athletes.sort_unstable_by_key(|(id, _, _)| *id);
         let Some(r) = roster_for(team) else { continue };
         let total: usize = r.iter().map(|x| x.len()).sum();
         let present: HashSet<String> = athletes
@@ -305,19 +344,19 @@ fn rename_china(ctx: &mut StableServerCtx<'_>) {
             .filter(|(_, n, _)| !present.contains(n))
             .map(|(id, _, lane)| (*id, *lane))
             .collect();
-        // 缺的名单名（分路, 名字, 年龄, 评分）。
-        let mut missing: Vec<(usize, &'static str, i64, i64)> = Vec::new();
+        // 缺的名单名（分路, 名字, 年龄, 评分, 潜力）。
+        let mut missing: Vec<(usize, &'static str, i64, i64, i64)> = Vec::new();
         for (li, names) in r.iter().enumerate() {
-            for &(n, a, o) in names.iter() {
+            for &(n, a, o, p) in names.iter() {
                 if !present.contains(n) {
-                    missing.push((li, n, a, o));
+                    missing.push((li, n, a, o, p));
                 }
             }
         }
         let mut taken = vec![false; cands.len()];
-        let mut todo: Vec<(usize, &'static str, i64, i64)> = Vec::new();
+        let mut todo: Vec<(usize, &'static str, i64, i64, i64)> = Vec::new();
         // 第一遍：同分路先配。
-        for &(li, n, a, o) in &missing {
+        for &(li, n, a, o, p) in &missing {
             let pos = cands
                 .iter()
                 .enumerate()
@@ -325,18 +364,18 @@ fn rename_china(ctx: &mut StableServerCtx<'_>) {
             match pos {
                 Some(k) => {
                     taken[k] = true;
-                    apply(ctx, cands[k].0, n, a, o, Lane::from_usize(li));
+                    apply(ctx, cands[k].0, n, a, o, p, Lane::from_usize(li));
                 }
-                None => todo.push((li, n, a, o)),
+                None => todo.push((li, n, a, o, p)),
             }
         }
         // 第二遍：剩下的名字给剩下的替补，并把他的分路统计改成名字对应的位置。
-        for (li, n, a, o) in todo {
+        for (li, n, a, o, p) in todo {
             let Some(k) = cands.iter().enumerate().position(|(k, _)| !taken[k]) else {
                 break;
             };
             taken[k] = true;
-            apply(ctx, cands[k].0, n, a, o, Lane::from_usize(li));
+            apply(ctx, cands[k].0, n, a, o, p, Lane::from_usize(li));
         }
     }
 }
@@ -396,11 +435,23 @@ const BENCH_NAMES: &[&str] = &[
     "青梧", "秋笙", "冬临", "春野", "夏至", "白芷", "朱砂", "青冥", "紫电", "惊蛰",
 ];
 
+/// 18 支真队里名单之外的替补：统一改成低能力青训。
+///
+/// 用户反馈「开新档有些队多选手、有些队少选手」。真实原因是引擎按
+/// `athlete_gen_setting.team_setting[team_level]` 生成名单时带了随机区间
+/// （比如 L7 的 important=19/19、general=17-18、sub=15-16 都还有波动），
+/// 而且 team_level 每支队不一样，所以人数和能力天然有差异——这一层数据和
+/// 引擎都不归 mod 管（stable ABI 没有增删选手的接口）。mod 能做的是：让
+/// **每支队每次开档都是同一批人、同一个顺序、同一套能力**。
+///
+/// 之前这里是遍历 `HashMap` 分配名字池，HashMap 的迭代顺序每次启动都不同，
+/// 同一支队第二次开档拿到的替补名字就变了 —— 这就是「选手不固定」的来源。
+/// 改成按 athlete id 排序后，分配结果与存档无关地固定下来。
 fn rename_bench(ctx: &mut StableServerCtx<'_>) {
-    if ctx.save_get_string("benchname_done_v3").as_deref() == Some("1") {
+    if ctx.save_get_string("benchname_done_v4").as_deref() == Some("1") {
         return;
     }
-    ctx.save_set_string("benchname_done_v3", "1");
+    ctx.save_set_string("benchname_done_v4", "1");
     // 全局已用名字，避免和真名/其他队重复。
     let mut used: HashSet<String> = HashSet::new();
     for id in ctx.record_ids(RecordKindV1::Athlete) {
@@ -419,9 +470,15 @@ fn rename_bench(ctx: &mut StableServerCtx<'_>) {
         }
         by_team.entry(t).or_default().push((id, name));
     }
+    // 固定遍历顺序：队名按字典序、队内按 athlete id。否则 HashMap 的随机
+    // 顺序会让名字池的分配结果每次开档都不一样。
+    let mut teams: Vec<(&String, &Vec<(usize, String)>)> = by_team.iter().collect();
+    teams.sort_by(|a, b| a.0.cmp(b.0));
     let mut next = 0usize;
-    for (team, players) in &by_team {
-        for (id, name) in players {
+    for (team, players) in teams {
+        let mut players = players.clone();
+        players.sort_unstable_by_key(|(id, _)| *id);
+        for (id, name) in &players {
             // 名单里的真名选手不动。
             if roster_lane_of(team, name).is_some() {
                 continue;
@@ -442,8 +499,32 @@ fn rename_bench(ctx: &mut StableServerCtx<'_>) {
             };
             used.insert(sub.clone());
             ctx.record_set_string(RecordKindV1::Athlete, *id, "name", &sub);
+            // 青训：能力和潜力都压到替补水平，避免一堆随机 90+ 的无名选手
+            // 把数据集里的真人首发挤到替补席。
+            make_trainee(ctx, *id);
         }
     }
+}
+
+/// 把一名「名单外的多余选手」改成低能力青训：能力 42-56、潜力 55-80、
+/// 年龄 18-23。上限压在 56，保证名单里的真人（最低也 63）永远排在青训前面，
+/// 不会出现「无名替补把明星挤到板凳」。
+/// 数值全部由 athlete id 派生，不用随机数，所以每次开档同一个人拿到同一组值。
+fn make_trainee(ctx: &mut StableServerCtx<'_>, id: usize) {
+    let h = (id as u64)
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
+    let pick = |n: u64, salt: u64| -> i64 {
+        let x = h.rotate_left((salt % 63) as u32) ^ salt.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        (x % n) as i64
+    };
+    let ovr = 42 + pick(15, 1); // 42-56
+    let pot = (ovr + 6 + pick(20, 2)).min(80); // 上限 80
+    let age = 18 + pick(6, 3); // 18-23
+    ctx.athlete_set_i64(id, "age", age);
+    set_potential(ctx, id, pot);
+    let lane = lane_of(ctx, id);
+    set_stats(ctx, id, ovr, lane);
 }
 
 /// v4：中国赛区（region 1/5）里所有还没换成中文名的选手——K 甲、青训队、
@@ -4938,6 +5019,38 @@ mod tests {
                 let slot_kids: Vec<&str> =
                     team.kids[0].kids.iter().map(|k| k.name.as_str()).collect();
                 assert_eq!(slot_kids, ["logo"]);
+            }
+        }
+    }
+
+    /// 名单数据自检：18 队齐全、名字不重、每个五人位置都至少有一人、
+    /// 潜力不低于能力、能力不越界。改名单时这条测试会先炸，不用进游戏试。
+    #[test]
+    fn roster_data_is_sane() {
+        const TEAMS: [&str; 18] = [
+            "成都AG超玩会", "重庆狼队", "武汉eStarPro", "北京WB", "广州TTG", "佛山DRG",
+            "苏州KSG", "济南RW侠", "上海EDG.M", "南通Hero久竞", "深圳DYG", "北京JDG",
+            "杭州LGD.NBW", "上海RNG.M", "长沙TES.A", "西安WE", "深圳KLG", "桐乡情久",
+        ];
+        let mut seen: std::collections::HashSet<&str> = Default::default();
+        for t in TEAMS {
+            let r = roster_for(t).unwrap_or_else(|| panic!("{t} missing from roster_for"));
+            for (li, players) in r.iter().enumerate() {
+                assert!(!players.is_empty(), "{t} lane {li} has no player");
+                for &(name, age, ovr, pot) in players.iter() {
+                    assert!(!name.is_empty(), "{t}: empty name");
+                    assert!(
+                        seen.insert(name),
+                        "{t}: duplicate name {name} (also used by another team)"
+                    );
+                    assert!((17..=40).contains(&age), "{t}/{name}: age {age} out of range");
+                    assert!((40..=99).contains(&ovr), "{t}/{name}: ovr {ovr} out of range");
+                    assert!(
+                        pot >= ovr,
+                        "{t}/{name}: potential {pot} below overall {ovr}"
+                    );
+                    assert!(pot <= 99, "{t}/{name}: potential {pot} > 99");
+                }
             }
         }
     }
