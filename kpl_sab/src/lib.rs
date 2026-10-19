@@ -4142,12 +4142,18 @@ use std::sync::{Arc, Mutex};
 const PO_BTN_PATH: &str = "main.bottom.po_btn";
 const PO_UI_PATH: &str = "main.po_ui";
 
+/// 底部栏按钮。位置必须避开原版两组控件：
+///   左侧：撤销/重做 0-96、「全部标为已读」111-487
+///   中间：时钟 680-960（anchor 0.5，中心 820）
+///   右侧：关闭转会期 / 跳过休整 / 结束教程 都是右锚定 1231-1404，Proceed 1429+
+/// 原来放在 1111-1223，和右锚定的「关闭转会期」只差 8px，转会期看着挤在一起。
+/// 改放到「全部标为已读」与时钟之间的空档（500-640），两边各留 13 / 20px。
 const PO_BTN_SRC: &str = r#"
 po_btn:color_icon_button {
   @"asset/base/style/main#secondary_button";
-  x: 1111px;
+  x: 500px;
   y: 0px;
-  width: 112px;
+  width: 140px;
   height: 40px;
   text: {
     text: "季后赛";
