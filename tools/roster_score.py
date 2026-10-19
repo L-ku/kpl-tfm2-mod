@@ -388,7 +388,9 @@ for name, rs in by_name.items():
 # 但推不满（一诺 2026 休息、数据垫底，纯数据 0.385，加满 0.45 后仍进不了前三）。
 HONOR_BONUS = 0.45
 try:
+    # roster_honor 可能和数据目录在一起（本地抓数据时），也可能和本脚本在一起
     sys.path.insert(0, BASE)
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import roster_honor as honor_mod
     honor_raw, honor_detail, champs = honor_mod.build()
 except Exception as exc:
