@@ -2069,11 +2069,6 @@ fn maybe_playoffs(ctx: &mut StableServerCtx<'_>) {
     // B 组第二轮后全淘汰：它的 8 个季后赛槽清空，不再打自己的季后赛。
     set_comp_playoffs(ctx, c.b, &[]);
 
-    // 完整 16 场赛程落盘（客户端「季后赛」面板的数据源）+ 每日战报新闻。
-    // 排在改写对阵之前：先发布当前状态，下一步写对阵后下一 tick 自然刷新。
-    publish_po_board(ctx, &po_mids, &plan);
-    push_po_day_news(ctx, tag, &po_mids, &plan);
-
     let built_key = format!("po_built_{}", tag);
     let first = ctx.save_get_string(&built_key).is_none();
     // 完整赛程新闻单独一个键：升级到本版后当前赛季也会补推一次。
@@ -2096,6 +2091,11 @@ fn maybe_playoffs(ctx: &mut StableServerCtx<'_>) {
             }
         }
     }
+    // 完整 16 场赛程落盘（客户端「季后赛」面板的数据源）+ 每日战报新闻。
+    // 放在对阵改写之后：上一轮刚打完时，下一轮的 WinnerOf/LoserOf 已经解析成真队。
+    publish_po_board(ctx, &po_mids, &plan);
+    push_po_day_news(ctx, tag, &po_mids, &plan);
+
     // 16 场全部结束后 A/B 容器已经没有季后赛了，强制 finalize，
     // 否则赛季可能卡在「联赛未结束」不往下走。
     if po_mids.iter().all(|m| is_played(ctx, *m)) {
