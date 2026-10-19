@@ -1841,6 +1841,140 @@ fn zero_ab_prizes(ctx: &mut StableServerCtx<'_>) {
     }
 }
 
+/// 完整 16 场季后赛赛程的落盘键（mod 存档命名空间，客户端面板读它）。
+/// 每行一场，'\t' 分隔：`日期 \t 轮次名 \t team1 \t 比分1 \t 比分2 \t team2`。
+/// 顺序 = 8 个季后赛日 × 2 场（S 容器槽 k + A 容器槽 k），和比赛日期一一对应。
+/// 未确定的一方写 0，未打完的比分写 -1（都是客户端能识别的哨兵）。
+const PO_BOARD_KEY: &str = "kpl_po_board";
+
+/// 16 个槽位在面板/新闻里显示的轮次名（和 po_plan 的槽序一一对应）。
+const PO_ROUND_CN: [&str; 16] = [
+    "胜者组 R1", "败者组 R1", "胜者组 R1", "败者组 R1",
+    "败者组 R2", "败者组 R2", "胜者组 R2", "9-10 名",
+    "败者组 R3", "败者组 R3", "败者组 R4", "7-8 名",
+    "败者组决赛", "5-6 名", "总决赛", "3-4 名",
+];
+
+fn po_day(ctx: &StableServerCtx<'_>, mid: usize) -> String {
+    ctx.record_get_string(RecordKindV1::Match, mid, "date")
+        .unwrap_or_default()
+}
+
+/// 比赛日期显示成 `M/D`；带时刻的（面板用）显示成 `M/D HH:MM`。
+fn po_md(d: &str) -> String {
+    if d.len() < 10 {
+        return d.to_string();
+    }
+    let day = format!(
+        "{}/{}",
+        d[5..7].trim_start_matches('0'),
+        d[8..10].trim_start_matches('0')
+    );
+    match d.get(11..16) {
+        Some(t) if t.len() == 5 && t.as_bytes()[2] == b':' => format!("{day} {t}"),
+        _ => day,
+    }
+}
+
+/// 只有写成 `{"Normal":队id}` 才算已确定的队伍。`{"WinnerOf":N}` /
+/// `{"LoserOf":N}` 里的 N 是**比赛 id**，`match_team`（用宽松的 parse_ids）
+/// 会把它们当成队 id，显示出来就是错的，这里必须排除。
+fn po_team(ctx: &StableServerCtx<'_>, mid: usize, field: &str) -> Option<usize> {
+    let j = ctx.record_get_json(RecordKindV1::Match, mid, field)?;
+    let p = j.find("\"Normal\"")?;
+    parse_ids(&j[p..]).first().copied()
+}
+
+/// 生成「日期 + 轮次 + 双方 + 比分」的一行。未定 = 待定，未打 = 不写比分。
+fn po_line(ctx: &StableServerCtx<'_>, mid: usize, label: &str, with_score: bool) -> String {
+    let side = |f: &str| match po_team(ctx, mid, f) {
+        Some(id) => team_name(ctx, id),
+        None => "待定".to_string(),
+    };
+    let (a, b) = (side("team1"), side("team2"));
+    let md = po_md(&po_day(ctx, mid));
+    match (with_score, match_result(ctx, mid)) {
+        (true, Some((_, s1, s2))) => format!("{} {} {} {}:{} {}", md, label, a, s1, s2, b),
+        _ => format!("{} {} {} vs {}", md, label, a, b),
+    }
+}
+
+/// 把完整 16 场赛程写进存档（客户端面板的数据源）。幂等：内容没变就不写。
+fn publish_po_board(
+    ctx: &mut StableServerCtx<'_>,
+    po_mids: &[usize],
+    plan: &[(PoSrc, PoSrc, &'static str)],
+) {
+    let mut out = String::from("v1\n");
+    for slot in 0..16 {
+        let mid = po_mids[slot];
+        // 顺序：日期 \t 轮次 \t team1 \t team2 \t 比分1 \t 比分2
+        let t = |f: &str| {
+            po_team(ctx, mid, f)
+                .map(|id| id.to_string())
+                .unwrap_or_else(|| "0".to_string())
+        };
+        let (s1, s2) = match match_result(ctx, mid) {
+            Some((_, a, b)) => (a, b),
+            None => (-1, -1),
+        };
+        out.push_str(&format!(
+            "{}\t{}\t{}\t{}\t{}\t{}\n",
+            po_day(ctx, mid),
+            plan[slot].2,
+            t("team1"),
+            t("team2"),
+            s1,
+            s2
+        ));
+    }
+    if ctx.save_get_string(PO_BOARD_KEY).as_deref() != Some(out.as_str()) {
+        ctx.save_set_string(PO_BOARD_KEY, &out);
+    }
+}
+
+/// 每个季后赛日 2 场都打完后推一条战报（8 天最多 8 条）。
+/// 只在装好本版之后新打完的日子推送；旧存档里已经打完的历史日不补发。
+fn push_po_day_news(
+    ctx: &mut StableServerCtx<'_>,
+    tag: usize,
+    po_mids: &[usize],
+    plan: &[(PoSrc, PoSrc, &'static str)],
+) {
+    // 第一次跑（基线程/老存档）时，把已经打完的日子直接标记成「已报」但**不推送**，
+    // 否则一次读档会补发 8 条历史战报。
+    let init_key = format!("po_day_init_{}", tag);
+    let baseline = ctx.save_get_string(&init_key).is_none();
+    if baseline {
+        for k in 0..8 {
+            if is_played(ctx, po_mids[2 * k]) && is_played(ctx, po_mids[2 * k + 1]) {
+                ctx.save_set_string(&format!("po_day_{}_{}", tag, k), "old");
+            }
+        }
+        ctx.save_set_string(&init_key, "1");
+    }
+    for k in 0..8 {
+        let (m1, m2) = (po_mids[2 * k], po_mids[2 * k + 1]);
+        if !is_played(ctx, m1) || !is_played(ctx, m2) {
+            break; // 日期是顺序推进的，本日没打完，后面的更没打完
+        }
+        let key = format!("po_day_{}_{}", tag, k);
+        if ctx.save_get_string(&key).is_some() {
+            continue;
+        }
+        let content = format!(
+            "KPL 季后赛战报（{}）：\n{}\n{}\n完整 16 场对阵与实时比分：底部栏「季后赛」按钮。",
+            po_day(ctx, m1),
+            po_line(ctx, m1, plan[2 * k].2, true),
+            po_line(ctx, m2, plan[2 * k + 1].2, true),
+        );
+        for tid in all_real_kpl_team_ids(ctx) {
+            ctx.news_push(tid, "KPL 季后赛战报", &content, "KPL");
+        }
+        ctx.save_set_string(&key, "1");
+    }
+}
+
 fn maybe_playoffs(ctx: &mut StableServerCtx<'_>) {
     if !UNIFIED_PLAYOFFS {
         return;
@@ -1927,8 +2061,16 @@ fn maybe_playoffs(ctx: &mut StableServerCtx<'_>) {
     // B 组第二轮后全淘汰：它的 8 个季后赛槽清空，不再打自己的季后赛。
     set_comp_playoffs(ctx, c.b, &[]);
 
+    // 完整 16 场赛程落盘（客户端「季后赛」面板的数据源）+ 每日战报新闻。
+    // 排在改写对阵之前：先发布当前状态，下一步写对阵后下一 tick 自然刷新。
+    publish_po_board(ctx, &po_mids, &plan);
+    push_po_day_news(ctx, tag, &po_mids, &plan);
+
     let built_key = format!("po_built_{}", tag);
     let first = ctx.save_get_string(&built_key).is_none();
+    // 完整赛程新闻单独一个键：升级到本版后当前赛季也会补推一次。
+    let news_key = format!("po_full_news_{}", tag);
+    let first_news = ctx.save_get_string(&news_key).is_none();
     for i in 0..16 {
         let mid = po_mids[i];
         let (x, y, _label) = plan[i];
@@ -2014,13 +2156,21 @@ fn maybe_playoffs(ctx: &mut StableServerCtx<'_>) {
 
     if first {
         ctx.save_set_string(&built_key, "1");
+    }
+    if first_news {
+        ctx.save_set_string(&news_key, "1");
+        // 完整 16 场对阵（全部轮次 + 日期），不是摘要。第一轮对阵已知，
+        // 后续轮次写「胜者/负者」，打完由每日战报补齐。
+        let mut bracket = String::new();
+        for slot in 0..16 {
+            bracket.push_str(&po_line(ctx, po_mids[slot], PO_ROUND_CN[slot], false));
+            bracket.push('\n');
+        }
         let content = format!(
-            "KPL 统一季后赛（全部 BO7，S/A 合流，A5/A6 淘汰）：\n\
+            "KPL 统一季后赛完整赛程（16 场，全部 BO7，S/A 合流，A5/A6 淘汰）：\n\
              胜者组：S1 {}、S2 {}、S3 {}、S4 {}\n\
              败者组：S5 {}、S6 {}、A1 {}、A2 {}、A3 {}、A4 {}\n\
-             4/16 胜者组第一轮 / 败者组第一轮，4/18 败者组第二轮（S5、S6 加入），\n\
-             4/19 胜者组决赛，4/25 败者组第三轮（胜者组第一轮败者加入），\n\
-             4/26 败者组第四轮，5/1 败者组决赛，5/3 总决赛。",
+             \n{}",
             team_name(ctx, s_rank[0]),
             team_name(ctx, s_rank[1]),
             team_name(ctx, s_rank[2]),
@@ -2030,10 +2180,11 @@ fn maybe_playoffs(ctx: &mut StableServerCtx<'_>) {
             team_name(ctx, a_rank[0]),
             team_name(ctx, a_rank[1]),
             team_name(ctx, a_rank[2]),
-            team_name(ctx, a_rank[3])
+            team_name(ctx, a_rank[3]),
+            bracket
         );
         for tid in all_real_kpl_team_ids(ctx) {
-            ctx.news_push(tid, "KPL 统一季后赛对阵", &content, "KPL");
+            ctx.news_push(tid, "KPL 统一季后赛完整赛程", &content, "KPL");
         }
     }
 }
@@ -3965,10 +4116,749 @@ impl StableServerExtension for KplNaming {
     }
 }
 
+// ======================= 客户端：完整 16 场季后赛面板 =======================
+//
+// 原生联赛页的 `#league_playoff` 只有 8 个卡位（引擎每个 LeagueCompetition
+// 固定 8 个季后赛槽），而本 mod 的 16 场分在 S/A 两个容器里，所以原生页和
+// 日历最多只显示一半。这里在底部栏加一个「季后赛」按钮，展开一个照原版对
+// 阵卡样式（327×107 深色圆角卡、40px 队徽槽、队名 + 比分、分隔线）排版
+// 的完整 16 场面板，数据全部来自服务端落盘的 `kpl_po_board`。
+//
+// 纯客户端只读：不写存档、不改比赛记录，因此不影响判定。
+
+use mod_api_stable::{ClientSceneKindV1, SceneKindV1, StableClient, StableExtension, UiEventKindV1};
+use std::sync::{Arc, Mutex};
+
+const PO_BTN_PATH: &str = "main.bottom.po_btn";
+const PO_UI_PATH: &str = "main.po_ui";
+
+const PO_BTN_SRC: &str = r#"
+po_btn:color_icon_button {
+  @"asset/base/style/main#secondary_button";
+  x: 1111px;
+  y: 0px;
+  width: 112px;
+  height: 40px;
+  text: {
+    text: "季后赛";
+    font: "asset/base/font/set/bold";
+    size: 16;
+    align_x: Center;
+    align_y: Center;
+  }
+}
+"#;
+
+const PO_ROOT_SRC: &str = r#"
+po_ui:empty {
+  width: 100%;
+  height: 100%;
+  z: 2000;
+  visible: false;
+}
+"#;
+
+/// 面板外壳：和原生 `rank` 页同尺寸（1600×968 居中），背板用原版
+/// `#161721` + 12 圆角。
+const PO_SHELL_SRC: &str = r#"
+panel:color {
+  x: 32px;
+  y: 24px;
+  width: 1600px;
+  height: 968px;
+  color: #161721ff;
+  rounding: Uniform { rounding: 12; }
+}
+"#;
+
+const PO_ROWS: usize = 16;
+
+/// 一场一张卡，照原版 `#league_playoff` 的对阵卡排版：
+///   327×107 深色卡（#1d1f2c，12 圆角），上下两行各 53px：
+///   40×40 队徽槽 + 队名 + 右对齐比分，中间 1px 分隔线。
+/// 卡片顶部各多一行小字（轮次 + 日期），所以整卡高 134px。
+/// 布局照原版对阵页：4 列 × 4 行，列 = 轮次推进（R1 → R2 → R3/R4 → 决赛周），
+/// 行 = 当轮第几场。
+fn po_row_src(slot: usize) -> String {
+    let col = slot / 4;
+    let row = slot % 4;
+    // 面板 1600 宽：327 * 4 张卡 + 3 道 77 间距 + 左右各 16 = 1563，居中后每卡
+    // 再收 4px ~ 9px 的余量。纵向 4 行 × (20 标题 + 107 卡 + 78 间隙) = 820。
+    let x = 16 + 392 * col;
+    let y = 80 + 205 * row;
+    format!(
+        r#"
+#r{slot}:empty {{
+  x: {x}px;
+  y: {y}px;
+  width: 327px;
+  height: 196px;
+
+  #card:color {{
+    x: 0px;
+    y: 24px;
+    width: 327px;
+    height: 107px;
+    color: #1d1f2cff;
+    rounding: Uniform {{ rounding: 12; }}
+  }}
+
+  #tag:label {{
+    @"asset/base/style/main#label";
+    x: 2px;
+    y: 0px;
+    width: 200px;
+    height: 20px;
+    size: 14;
+    color: #8a93a6ff;
+    align_x: Left;
+    align_y: Center;
+    text: "";
+  }}
+
+  #date:label {{
+    @"asset/base/style/main#label";
+    anchor_x: 1;
+    pivot_x: 1;
+    x: -2px;
+    y: 0px;
+    width: 96px;
+    height: 20px;
+    size: 14;
+    color: #8a93a6ff;
+    align_x: Right;
+    align_y: Center;
+    text: "";
+  }}
+
+  #team0:empty {{
+    x: 0px;
+    y: 24px;
+    width: 327px;
+    height: 53px;
+
+    #logo_slot:color {{
+      width: 40px;
+      height: 40px;
+      x: 10px;
+      anchor_y: 0.5;
+      pivot_y: 0.5;
+      color: #161721ff;
+      rounding: Uniform {{ rounding: 8; }}
+      ignore_event: true;
+    }}
+
+    #logo:image {{
+      width: 32px;
+      height: 32px;
+      anchor_x: 0.5;
+      pivot_x: 0.5;
+      anchor_y: 0.5;
+      pivot_y: 0.5;
+      ignore_event: true;
+    }}
+
+    #name:label {{
+      @"asset/base/style/main#label";
+      x: 56px;
+      width: 210px;
+      height: 53px;
+      size: 18;
+      color: #e8e8e8ff;
+      align_x: Left;
+      align_y: Center;
+      text: "";
+    }}
+
+    #score:label {{
+      @"asset/base/style/main#label";
+      anchor_x: 1;
+      pivot_x: 1;
+      x: -10px;
+      width: 40px;
+      height: 53px;
+      size: 18;
+      color: #e8e8e8ff;
+      align_x: Center;
+      align_y: Center;
+      text: "-";
+    }}
+  }}
+
+  #divider:image {{
+    source: "asset/base/sprite/white";
+    width: 307px;
+    height: 1px;
+    x: 10px;
+    y: 77px;
+    color: #161721ff;
+  }}
+
+  #team1:empty {{
+    x: 0px;
+    y: 78px;
+    width: 327px;
+    height: 53px;
+
+    #logo_slot:color {{
+      width: 40px;
+      height: 40px;
+      x: 10px;
+      anchor_y: 0.5;
+      pivot_y: 0.5;
+      color: #161721ff;
+      rounding: Uniform {{ rounding: 8; }}
+      ignore_event: true;
+    }}
+
+    #logo:image {{
+      width: 32px;
+      height: 32px;
+      anchor_x: 0.5;
+      pivot_x: 0.5;
+      anchor_y: 0.5;
+      pivot_y: 0.5;
+      ignore_event: true;
+    }}
+
+    #name:label {{
+      @"asset/base/style/main#label";
+      x: 56px;
+      width: 210px;
+      height: 53px;
+      size: 18;
+      color: #e8e8e8ff;
+      align_x: Left;
+      align_y: Center;
+      text: "";
+    }}
+
+    #score:label {{
+      @"asset/base/style/main#label";
+      anchor_x: 1;
+      pivot_x: 1;
+      x: -10px;
+      width: 40px;
+      height: 53px;
+      size: 18;
+      color: #e8e8e8ff;
+      align_x: Center;
+      align_y: Center;
+      text: "-";
+    }}
+  }}
+}}
+"#
+    )
+}
+
+fn po_header_src() -> String {
+    let mut s = String::from(
+        r#"
+#header:empty {
+  x: 0px;
+  y: 0px;
+  width: 1600px;
+  height: 72px;
+"#,
+    );
+    s.push_str(
+        r#"
+  #title:label {
+    @"asset/base/style/main#bold_label";
+    x: 32px;
+    y: 14px;
+    width: 520px;
+    height: 32px;
+    size: 23;
+    color: #ffffffff;
+    align_x: Left;
+    align_y: Center;
+    text: "KPL 季后赛 · 完整 16 场";
+  }
+
+  #sub:label {
+    @"asset/base/style/main#label";
+    x: 34px;
+    y: 46px;
+    width: 900px;
+    height: 20px;
+    size: 12;
+    color: #8a93a6ff;
+    align_x: Left;
+    align_y: Center;
+    text: "全部 BO7 · S/A 合流 · 自左向右四个比赛周：R1（4/16-4/17）→ R2（4/18-4/19）→ R3/R4（4/25-4/26）→ 决赛周（5/1-5/3）";
+  }
+
+  #state:label {
+    @"asset/base/style/main#label";
+    anchor_x: 1;
+    pivot_x: 1;
+    x: -80px;
+    y: 14px;
+    width: 520px;
+    height: 40px;
+    size: 14;
+    color: #8a93a6ff;
+    align_x: Right;
+    align_y: Center;
+    text: "";
+  }
+
+  #close:color_icon_button {
+    @"asset/base/style/main#secondary_button";
+    anchor_x: 1;
+    pivot_x: 1;
+    x: -24px;
+    y: 14px;
+    width: 40px;
+    height: 40px;
+    text: {
+      text: "X";
+      font: "asset/base/font/set/bold";
+      size: 18;
+      align_x: Center;
+      align_y: Center;
+    }
+  }
+"#,
+    );
+    s.push_str("}\n");
+    s
+}
+
+struct PoState {
+    in_game: bool,
+    open: bool,
+    frames: u64,
+    dirty: bool,
+    fail: u32,
+    handlers: bool,
+}
+
+struct PoExt {
+    st: Arc<Mutex<PoState>>,
+}
+
+impl StableExtension for PoExt {
+    fn post_update(&self, ctx: &mut StableClient<'_>, _dt: u64) {
+        po_tick(ctx, &self.st);
+    }
+}
+
+fn po_tick(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>) {
+    let in_game = ctx.scene_kind() == Some(SceneKindV1::InGame);
+    {
+        let mut s = st.lock().unwrap();
+        s.frames = s.frames.wrapping_add(1);
+        if !in_game {
+            if s.in_game {
+                s.in_game = false;
+                s.open = false;
+                s.fail = 0;
+            }
+            return;
+        }
+        s.in_game = true;
+    }
+    if !ctx.ui_exists("main") || !ctx.ui_exists("main.bottom") {
+        return;
+    }
+    // 比赛流程界面（BP、对局、赛后）会盖住管理 UI，按钮跟着原版底部栏一起藏。
+    let in_match = matches!(
+        ctx.client_scene_kind(),
+        Some(ClientSceneKindV1::Match)
+            | Some(ClientSceneKindV1::MatchResult)
+            | Some(ClientSceneKindV1::InGame)
+            | Some(ClientSceneKindV1::SetFeedback)
+            | Some(ClientSceneKindV1::LockerRoom)
+    );
+    if in_match {
+        let was = {
+            let mut s = st.lock().unwrap();
+            let was = s.open;
+            s.open = false;
+            was
+        };
+        if was && ctx.ui_exists(PO_UI_PATH) {
+            ctx.ui_set_visible(PO_UI_PATH, false);
+        }
+        if ctx.ui_exists(PO_BTN_PATH) {
+            ctx.ui_set_visible(PO_BTN_PATH, false);
+        }
+        return;
+    }
+    if ctx.ui_visible(PO_BTN_PATH) == Some(false) {
+        ctx.ui_set_visible(PO_BTN_PATH, true);
+    }
+    if ctx.key_pressed("F8") {
+        let open = {
+            let mut s = st.lock().unwrap();
+            s.open = !s.open;
+            s.dirty = true;
+            s.open
+        };
+        if ctx.ui_exists(PO_UI_PATH) {
+            ctx.ui_set_visible(PO_UI_PATH, open);
+        }
+    }
+    po_ensure_ui(ctx, st);
+    let dirty = {
+        let mut s = st.lock().unwrap();
+        // 面板开着时每秒重读一次赛程：比赛打完/对阵确定后比分和队名会自动更新。
+        if s.open && s.frames % 60 == 0 {
+            s.dirty = true;
+        }
+        s.dirty && s.open
+    };
+    if dirty {
+        po_redraw(ctx);
+        st.lock().unwrap().dirty = false;
+    }
+}
+
+fn po_ensure_ui(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>) {
+    if !ctx.ui_exists(PO_BTN_PATH) {
+        if ctx.ui_spawn_source("main.bottom", PO_BTN_SRC) {
+            po_bind(ctx, st, PO_BTN_PATH, false);
+        }
+    }
+    if !ctx.ui_exists(PO_UI_PATH) {
+        if st.lock().unwrap().fail >= 3 {
+            return;
+        }
+        if !po_spawn_tree(ctx, "main", PO_ROOT_SRC) {
+            st.lock().unwrap().fail += 1;
+            return;
+        }
+    }
+    let shell = format!("{PO_UI_PATH}.panel");
+    if !ctx.ui_exists(&shell) {
+        if !po_spawn_tree(ctx, PO_UI_PATH, PO_SHELL_SRC) {
+            return;
+        }
+    }
+    if !ctx.ui_exists(&format!("{shell}.header")) {
+        if !po_spawn_tree(ctx, &shell, &po_header_src()) {
+            return;
+        }
+    }
+    for slot in 0..PO_ROWS {
+        let path = format!("{shell}.r{slot}");
+        if ctx.ui_exists(&path) {
+            continue;
+        }
+        if !po_spawn_tree(ctx, &shell, &po_row_src(slot)) {
+            return;
+        }
+    }
+    let close_path = format!("{shell}.header.close");
+    if !st.lock().unwrap().handlers && ctx.ui_exists(&close_path) {
+        po_bind(ctx, st, &close_path, true);
+        st.lock().unwrap().handlers = true;
+    }
+    let open = st.lock().unwrap().open;
+    ctx.ui_set_visible(PO_UI_PATH, open);
+}
+
+// -- 单节点 spawn（host 拒绝一次声明多个节点的 source） --
+
+struct PoNode {
+    name: String,
+    src: String,
+    kids: Vec<PoNode>,
+}
+
+fn po_spawn_tree(ctx: &mut StableClient<'_>, parent: &str, src: &str) -> bool {
+    match po_parse_node(src) {
+        Some(n) => po_spawn_node(ctx, parent, &n),
+        None => false,
+    }
+}
+
+fn po_spawn_node(ctx: &mut StableClient<'_>, parent: &str, node: &PoNode) -> bool {
+    let path = format!("{parent}.{}", node.name);
+    if !ctx.ui_exists(&path) && !ctx.ui_spawn_source(parent, &node.src) {
+        return false;
+    }
+    node.kids.iter().all(|k| po_spawn_node(ctx, &path, k))
+}
+
+fn po_find_open(b: &[u8], mut i: usize) -> Option<usize> {
+    let mut in_str = false;
+    while i < b.len() {
+        let c = b[i];
+        if in_str {
+            if c == b'\\' {
+                i += 2;
+                continue;
+            }
+            if c == b'"' {
+                in_str = false;
+            }
+        } else if c == b'"' {
+            in_str = true;
+        } else if c == b'{' {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
+}
+
+fn po_match_close(b: &[u8], open: usize) -> Option<usize> {
+    let mut depth = 1i32;
+    let mut i = open + 1;
+    let mut in_str = false;
+    while i < b.len() {
+        let c = b[i];
+        if in_str {
+            if c == b'\\' {
+                i += 2;
+                continue;
+            }
+            if c == b'"' {
+                in_str = false;
+            }
+        } else if c == b'"' {
+            in_str = true;
+        } else if c == b'{' {
+            depth += 1;
+        } else if c == b'}' {
+            depth -= 1;
+            if depth == 0 {
+                return Some(i);
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+fn po_stmt_start(b: &[u8], mut i: usize) -> bool {
+    while i > 0 {
+        i -= 1;
+        let c = b[i];
+        if (c as char).is_whitespace() {
+            continue;
+        }
+        return c == b'{' || c == b'}' || c == b';';
+    }
+    true
+}
+
+fn po_parse_node(src: &str) -> Option<PoNode> {
+    let b = src.as_bytes();
+    let mut i = 0;
+    while i < b.len() && (b[i] as char).is_whitespace() {
+        i += 1;
+    }
+    let start = i;
+    let open = po_find_open(b, i)?;
+    let head = src[start..open].trim();
+    let colon = head.find(':')?;
+    let name = head[..colon].trim().trim_start_matches('#').to_string();
+    let close = po_match_close(b, open)?;
+    let (own, kids) = po_split_body(&src[open + 1..close]);
+    Some(PoNode {
+        name,
+        src: format!("{} {{\n{}}}\n", head.trim_start_matches('#'), own),
+        kids,
+    })
+}
+
+fn po_split_body(body: &str) -> (String, Vec<PoNode>) {
+    let b = body.as_bytes();
+    let mut own = String::new();
+    let mut kids = Vec::new();
+    let (mut i, mut last) = (0usize, 0usize);
+    while i < b.len() {
+        let c = b[i];
+        if c == b'"' {
+            i += 1;
+            while i < b.len() {
+                if b[i] == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                if b[i] == b'"' {
+                    i += 1;
+                    break;
+                }
+                i += 1;
+            }
+            continue;
+        }
+        if c == b'{' {
+            i = po_match_close(b, i).map_or(i + 1, |x| x + 1);
+            continue;
+        }
+        if c == b'#' && po_stmt_start(b, i) {
+            if let Some(open) = po_find_open(b, i) {
+                if let Some(close) = po_match_close(b, open) {
+                    own.push_str(&body[last..i]);
+                    if let Some(kid) = po_parse_node(&body[i..close + 1]) {
+                        kids.push(kid);
+                    }
+                    last = close + 1;
+                    i = close + 1;
+                    continue;
+                }
+            }
+        }
+        i += 1;
+    }
+    own.push_str(&body[last..]);
+    (own, kids)
+}
+
+// -- 点击绑定（host 会同时发 click 和 path-event，按帧去重） --
+
+fn po_bind(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>, path: &str, close: bool) {
+    let last = Arc::new(AtomicU64::new(u64::MAX));
+    let run = {
+        let st = st.clone();
+        let last = last.clone();
+        move |c: &mut StableClient<'_>| {
+            let f = st.lock().unwrap().frames;
+            if last.swap(f, Ordering::SeqCst) == f {
+                return;
+            }
+            let mut s = st.lock().unwrap();
+            if close {
+                s.open = false;
+            } else {
+                s.open = !s.open;
+                s.dirty = true;
+            }
+            let open = s.open;
+            drop(s);
+            if c.ui_exists(PO_UI_PATH) {
+                c.ui_set_visible(PO_UI_PATH, open);
+            }
+        }
+    };
+    let r1 = run.clone();
+    ctx.ui_register_click(path, "", move |c| r1(c));
+    let r2 = run;
+    ctx.ui_register_path_events(path, move |c| {
+        if c.ui_current_event().map_or(true, |e| e.kind == Some(UiEventKindV1::Click)) {
+            r2(c);
+        }
+    });
+}
+
+// -- 绘制：读服务端落盘的 16 行，填进原版样式的卡片 --
+
+fn po_name(ctx: &StableClient<'_>, v: &str) -> String {
+    v.parse::<usize>()
+        .ok()
+        .filter(|&id| id > 0)
+        .and_then(|id| ctx.team_name(id))
+        .unwrap_or_else(|| "待定".to_string())
+}
+
+fn po_logo(ctx: &StableClient<'_>, v: &str) -> Option<String> {
+    v.parse::<usize>()
+        .ok()
+        .filter(|&id| id > 0)
+        .and_then(|id| ctx.record_get_string(RecordKindV1::Team, id, "logo"))
+}
+
+/// 比分：-1 = 未打，写 "-"（和原版对阵卡一样）。
+fn po_score(v: &str) -> String {
+    match v.parse::<i64>() {
+        Ok(n) if n >= 0 => n.to_string(),
+        _ => "-".to_string(),
+    }
+}
+
+/// 一行 = 一场：`(轮次, 日期, 队1名, 队2名, 比分1, 比分2, 队徽1, 队徽2)`。
+struct PoCard {
+    tag: String,
+    date: String,
+    t: [String; 2],
+    s: [String; 2],
+    logo: [Option<String>; 2],
+}
+
+fn po_read_card(ctx: &StableClient<'_>, line: &str) -> Option<PoCard> {
+    let f: Vec<&str> = line.split('\t').collect();
+    if f.len() < 6 {
+        return None;
+    }
+    Some(PoCard {
+        tag: f[1].to_string(),
+        date: po_md(f[0]),
+        t: [po_name(ctx, f[2]), po_name(ctx, f[3])],
+        s: [po_score(f[4]), po_score(f[5])],
+        logo: [po_logo(ctx, f[2]), po_logo(ctx, f[3])],
+    })
+}
+
+fn po_redraw(ctx: &mut StableClient<'_>) {
+    let shell = format!("{PO_UI_PATH}.panel");
+    let board = ctx.save_get_string(PO_BOARD_KEY).unwrap_or_default();
+    let done = board
+        .lines()
+        .skip(1)
+        .filter(|l| l.split('\t').nth(4).and_then(|v| v.parse::<i64>().ok()).map_or(false, |v| v >= 0))
+        .count();
+    let state = if board.is_empty() {
+        "季后赛尚未开始（45 场常规赛打完后生成 16 场对阵）".to_string()
+    } else {
+        format!("共 16 场 · 已结束 {done} 场 · 全部 BO7")
+    };
+    let _ = ctx.ui_set_text(&format!("{shell}.header.state"), &state);
+    let cards: Vec<PoCard> = board
+        .lines()
+        .skip(1)
+        .take(PO_ROWS)
+        .filter_map(|l| po_read_card(ctx, l))
+        .collect();
+    for slot in 0..PO_ROWS {
+        let base = format!("{shell}.r{slot}");
+        let Some(c) = cards.get(slot) else {
+            // 新赛季还没生成对阵：不留上一届的旧卡片。
+            let _ = ctx.ui_set_visible(&base, false);
+            continue;
+        };
+        let _ = ctx.ui_set_visible(&base, true);
+        let _ = ctx.ui_set_text(&format!("{base}.tag"), &c.tag);
+        let _ = ctx.ui_set_text(&format!("{base}.date"), &c.date);
+        for i in 0..2 {
+            let side = format!("{base}.team{i}");
+            let _ = ctx.ui_set_text(&format!("{side}.name"), &c.t[i]);
+            let _ = ctx.ui_set_text(&format!("{side}.score"), &c.s[i]);
+            let lpath = format!("{side}.logo");
+            match &c.logo[i] {
+                Some(l) => {
+                    let _ = ctx.ui_set_team_logo(&lpath, l);
+                    let _ = ctx.ui_set_visible(&lpath, true);
+                }
+                None => {
+                    let _ = ctx.ui_set_visible(&lpath, false);
+                }
+            }
+        }
+    }
+}
+
 fn init(host: &StableHost) -> StableMod {
     host.log(LogLevel::Info, "[kpl_sab] naming build loaded");
     let mut decl = StableMod::new("kpl_sab");
     decl.set_server_extension(KplNaming);
+    // 客户端面板：完整 16 场季后赛（原生页/日历只有 8 个卡位）。
+    decl.set_extension(PoExt {
+        st: Arc::new(Mutex::new(PoState {
+            in_game: false,
+            open: false,
+            frames: 0,
+            dirty: false,
+            fail: 0,
+            handlers: false,
+        })),
+    });
     decl
 }
 
