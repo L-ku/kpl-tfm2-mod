@@ -4830,7 +4830,8 @@ fn po_redraw(ctx: &mut StableClient<'_>) {
             let side = format!("{base}.team{i}");
             let _ = ctx.ui_set_text(&format!("{side}.name"), &c.t[i]);
             let _ = ctx.ui_set_text(&format!("{side}.score"), &c.s[i]);
-            let lpath = format!("{side}.logo");
+            // 原生卡片里队徽是 logo_slot 的 image 子节点（槽提供深色圆角底）。
+            let lpath = format!("{side}.logo_slot.logo");
             match &c.logo[i] {
                 Some(l) => {
                     let _ = ctx.ui_set_team_logo(&lpath, l);
