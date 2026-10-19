@@ -1,6 +1,13 @@
 # -*- coding: utf-8 -*-
-"""把 2025 春 / 2025 夏 / 2025 年度总决赛 / 2026 春 / 2026 夏 五季官方数据
-合成 kpl_sab 的能力值。选手名单和人名一个不动，只重算 ovr / pot / age。
+"""把 2023 春 ~ 2026 夏 十个赛季的官方数据合成 kpl_sab 的能力值。
+选手名单和人名一个不动，只重算 ovr / pot / age。
+
+十个赛季：2023春 2023夏 2024春 2024夏 2024年度总决赛
+          2025春 2025夏 2025年度总决赛 2026春 2026夏
+
+为什么从 2023 开始：官网 getSeasonPlayerPerf 只有这几季有数据（2022 及更早
+返回 0 行）。而 2023S1/S2、2024S1-S3 的 perf 没有选手名（只有 player_id），
+用 2026 的 id→名字表回填，所以一诺、长生、钟意、轩染这些老将能凑满 8-10 季。
 
 数据源（kpl.qq.com 自己的接口，无第三方）：
   getSeasonPlayerPerf  -> KDA、总击杀、伤害占比、承伤占比、经济占比、参团率
@@ -24,15 +31,20 @@
   5) 再按总样本量向「该分路中位数」收缩：局数越少越接近中位，
      打了几十局的不会被吹成明星，也不会因为一两季低迷就被打死；
      样本量足够（几百局）时几乎不收缩。
-  五季一局没打的选手按替补/青训处理，能力值 62-68。
+  十季一局没打的选手按替补/青训处理，能力值 62-68。
 """
-import json, io, glob, re, os, sys, collections, random
+import json, io, glob, re, os, sys, math, collections, random
 
 BASE = os.environ.get('KPL_DATA', os.path.dirname(os.path.abspath(__file__)))
-SEASONS = ['KPL2025S1', 'KPL2025S2', 'KPL2025S3', 'KPL2026S1', 'KPL2026S2']
+SEASONS = ['KPL2023S1', 'KPL2023S2', 'KPL2024S1', 'KPL2024S2', 'KPL2024S3',
+           'KPL2025S1', 'KPL2025S2', 'KPL2025S3', 'KPL2026S1', 'KPL2026S2']
 # 近重远轻：2026 夏 1.0，每往前一季递减
-SEASON_W = {'KPL2026S2': 1.00, 'KPL2026S1': 0.85, 'KPL2025S3': 0.60,
-            'KPL2025S2': 0.45, 'KPL2025S1': 0.30}
+# 近重远轻：2026 夏 1.0，每往前一季递减约 15%（越早的数据参考价值越低，
+# 但也不能降到 0 —— 生涯长度和稳定性本身就是实力的证据）
+SEASON_W = {'KPL2026S2': 1.00, 'KPL2026S1': 0.90, 'KPL2025S3': 0.78,
+            'KPL2025S2': 0.70, 'KPL2025S1': 0.62, 'KPL2024S3': 0.55,
+            'KPL2024S2': 0.50, 'KPL2024S1': 0.45, 'KPL2023S2': 0.38,
+            'KPL2023S1': 0.32}
 
 LANE_OF_POS = {1: 'top', 2: 'mid', 3: 'bot', 4: 'jg', 5: 'sup'}
 LANE_OF_CN = {'对抗路': 'top', '中路': 'mid', '发育路': 'bot', '打野': 'jg', '游走': 'sup'}
@@ -53,7 +65,7 @@ W = {
 INVERT = {('sup', 'gold_share')}
 
 SHRINK_K = 60.0          # 样本量收缩常数（局）：60 局时收缩一半
-BENCH_MIN, BENCH_MAX = 62, 68   # 五季 0 局选手的能力区间
+BENCH_MIN, BENCH_MAX = 62, 68   # 十季 0 局选手的能力区间
 
 
 def fnum(x):
@@ -108,7 +120,7 @@ for blk in re.finditer(r'"([^"]+)" => Some\(\[(.*?)\n        \]\),', seg, re.S):
                                      lane=LANES[li]))
 lane_of = {p['name']: p['lane'] for t in roster.values() for p in t}
 
-# ---------- 2. perf 接口：五季全量，用 player_id 认人 ----------
+# ---------- 2. perf 接口：十季全量，用 player_id 认人 ----------
 perf = collections.defaultdict(dict)   # (season, name) -> fields
 id2name, id2pos = {}, {}
 for season in SEASONS:
@@ -363,10 +375,18 @@ for name, rs in by_name.items():
 # 官方没有个人的冠军/亚军记录，但有三类可量化的东西：
 #   1) 每季 8 个榜单的前 5 名（MVP 次数、总击杀、总助攻、五杀、对位单杀、
 #      野怪击杀、中路游走、射手团战伤害、辅助开团）；
-#   2) 每季总决赛冠军队伍（该队当季出场 ≥10 局的选手算冠军成员）；
+#   2) 每季总决赛冠军队伍的首发五人（有分路就每个分路取出场最多的）；
 #   3) 总决赛 FMVP（官网接口没有，按官方公告手工维护）。
 # 时间 × 赛事等级：年度总决赛 ×1.3、春/夏季赛 ×1.0；越近的赛季权重越高。
-HONOR_W = 0.18          # 荣誉在综合分里的权重：加分项，不盖过当季表现
+# 荣誉是「加分」，不是「按比例缩放」：
+#   score = 纯数据分 + HONOR_BONUS * honor_norm
+# 早期版本写成 score = 纯数据分*(1-0.3) + honor_norm*0.3，结果零荣誉的人分数
+# 被整体乘 0.7，等于「没冠军就扣 30%」，小落/幻想/大海这类数据好但没冠军的
+# 直接被压掉 8-10 名。荣誉应该是在数据分之上给冠军核心的额外加成。
+# HONOR_BONUS 按综合分的分布定标：全体标准差约 0.127，
+# 0.45 约等于 3.5 个标准差 —— 满荣誉能把一个中游选手推到同位置榜首，
+# 但推不满（一诺 2026 休息、数据垫底，纯数据 0.385，加满 0.45 后仍进不了前三）。
+HONOR_BONUS = 0.45
 try:
     sys.path.insert(0, BASE)
     import roster_honor as honor_mod
@@ -376,19 +396,27 @@ except Exception as exc:
     print('honor skipped:', exc)
 
 if honor_raw:
-    hs = sorted(honor_raw.values())
-    hlo, hhi = hs[0], hs[-1]
-    for name, v in scored.items():
+    # 荣誉分用「对数压缩」而不是纯百分位：
+    # 一诺 38.6 分、第二名 16.0、大多数 0-12。纯百分位会把一诺和所有有荣誉的人
+    # 都压到接近 1.0，2.4 倍的差距被抹平；纯 min-max 又会被一诺这个离群点拉爆。
+    # 取 log 后按 log(最高分) 归一：一诺=1.0，第二名≈0.78，零荣誉=0。
+    names = sorted(scored)
+    hv = [honor_raw.get(n, 0.0) for n in names]
+    hmax = max(hv) if hv else 0.0
+    lg = math.log1p
+    for name in names:
         raw = honor_raw.get(name, 0.0)
-        norm = (raw - hlo) / (hhi - hlo) if hhi > hlo else 0.0
+        norm = (lg(raw) / lg(hmax)) if (hmax > 0 and raw > 0) else 0.0
+        v = scored[name]
         v['honor'] = raw
         v['honor_norm'] = norm
-        v['score'] = v['score'] * (1 - HONOR_W) + norm * HONOR_W
+        v['data_score'] = v['score']
+        v['score'] = v['score'] + HONOR_BONUS * norm
 
 # ---------- 6b. 综合分 -> 能力值 ----------
 # 按分路内排名映射（不是绝对值映射）：每个位置都有自己的强、中、弱，
 # 不会出现「所有辅助都比所有射手强」这种整体偏移。
-# 再按总样本量向中位排名收缩：打了几十局的不会被吹成顶级，打满五季的才拿满价。
+# 再按总样本量向中位排名收缩：打了几十局的不会被吹成顶级，打满十季的才拿满价。
 for lane in LANES:
     group = [(n, v) for n, v in scored.items() if v['lane'] == lane]
     if not group:
@@ -453,7 +481,7 @@ for team, lst in out_players.items():
         rep.write('   %-5s %-3s %2d岁 %2d(%+3d) pot%2d  %s赛季 %4d局%s\n' % (
             p['name'], p['lane'], p['age'], p['ovr'], p['ovr'] - p['old_ovr'],
             p['pot'], p['seasons'], int(p['games']),
-            '' if p['matched'] else '   <-- 五季0局，按替补'))
+            '' if p['matched'] else '   <-- 十季0局，按替补'))
 rep.write('\novr min=%d max=%d mean=%.1f\n' % (
     min(p['ovr'] for p in allp), max(p['ovr'] for p in allp),
     sum(p['ovr'] for p in allp) / len(allp)))
