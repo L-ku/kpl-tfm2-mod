@@ -1736,6 +1736,86 @@ fn save_id_list(ctx: &StableServerCtx<'_>, key: &str) -> Option<Vec<usize>> {
     (!v.is_empty()).then_some(v)
 }
 
+/// S组 / A组 / B组 是同一级联赛（KPL 的三个分组，不是一二级）。
+/// `League.division` 决定引擎怎么看一个联赛：
+///   0 = 一级联赛 → 有「一级联赛」赞助加成（first_division_bonus_bp）、
+///       可签 first_division_only 的赞助商、经理董事会按保级评估；
+///   1 = 二级联赛 → 与同赛区 div0 组成升降级对，赛季末打 BO5 升降级赛，
+///       输的一方打「降级」标签、拿不到一级加成。
+/// 原始 data_setting 里 TACC(一组/S) = div0、TACC2(二组/A) = div1，于是引擎把
+/// S→A 当成真降级，给出升降级赛新闻、降级履历和赞助惩罚。
+/// 这里把 TACC2 强制改回 div0（A 组也是顶级联赛），S/A/B 三组同级；
+/// K甲(TACJ2) 保持 div1，B组(TACJ) 保持 div0，B↔K甲 的真升降级保留。
+/// 幂等：只在不一致时写。旧存档读进来也会在第一个 tick 被纠正。
+const SAME_TIER_SAB: bool = true;
+
+/// S/A/B 同级：把各组联赛的 `division` 维持在期望值（A 组=0）。
+fn enforce_same_tier(ctx: &mut StableServerCtx<'_>) {
+    if !SAME_TIER_SAB {
+        return;
+    }
+    for name in ["TACC", "TACC2", "TACJ"] {
+        let Some(lid) = league_id_by_name(ctx, name) else {
+            continue;
+        };
+        let want = "0";
+        let cur = ctx
+            .record_get_json(RecordKindV1::League, lid, "division")
+            .unwrap_or_default();
+        if cur.trim() != want {
+            ctx.record_set_json(RecordKindV1::League, lid, "division", want);
+        }
+    }
+    // 旧存档里可能已经排好了「S组后2 vs A组前2」的升降级赛。已经开打的保留
+    // （不能抹掉战绩），一场未打的直接撤掉 —— 两组同级后本来就不该有这一轮。
+    cancel_stale_promotion(ctx);
+}
+
+/// 清掉还没开打的 `promotion_series`（只清 S / A 两个容器）。
+/// B 组(TACJ, div0) 和 K甲(TACJ2, div1) 是真正的 B↔K甲 升降级，必须保留。
+/// 幂等：空数组就跳过；已开打的也跳过（不能抹掉战绩）。
+/// 清空的同时把两场附加赛的日期推到 2099 并标 `promotion_series_finalized`：
+/// 数组空了以后引擎不该再去索引它，日期推走则避免它们被当成欠赛补打。
+fn cancel_stale_promotion(ctx: &mut StableServerCtx<'_>) {
+    let Some(c) = sab_comps(ctx).or_else(|| sab_comps_all(ctx)) else {
+        return;
+    };
+    for cid in [c.s, c.a] {
+        let Some(j) =
+            ctx.record_get_json(RecordKindV1::LeagueCompetition, cid, "promotion_series")
+        else {
+            continue;
+        };
+        let ids = parse_ids(&j);
+        if ids.is_empty() {
+            continue;
+        }
+        if ids.iter().any(|m| is_played(ctx, *m)) {
+            continue;
+        }
+        ctx.record_set_json(RecordKindV1::LeagueCompetition, cid, "promotion_series", "[]");
+        ctx.record_set_json(
+            RecordKindV1::LeagueCompetition,
+            cid,
+            "promotion_series_finalized",
+            "true",
+        );
+        for mid in ids {
+            let d = ctx
+                .record_get_string(RecordKindV1::Match, mid, "date")
+                .unwrap_or_default();
+            if !d.starts_with("2099") && !d.is_empty() {
+                ctx.record_set_string(
+                    RecordKindV1::Match,
+                    mid,
+                    "date",
+                    "2099-12-31T00:00:00",
+                );
+            }
+        }
+    }
+}
+
 /// 统一季后赛：45 场打完后锁定 12 队、写 16 个槽位的对阵，之后每天重新对账。
 /// A组(TACC2, league 7) / B组(TACJ, league 5) 的奖金表清零。
 /// 统一名次只在 S组(league 1) 发一次，避免 S 队在 A 组表里重复拿钱。
@@ -3796,6 +3876,8 @@ impl StableServerExtension for KplNaming {
         rename_bench(ctx);
         rename_cn_all(ctx);
         set_bo(ctx);
+        // S/A/B 同级（A 组不再是「二级联赛」），赶在任何升降级判定之前。
+        enforce_same_tier(ctx);
         zero_ab_prizes(ctx);
         // 新档进档：本档还没开打就抽签（18 真队随机分一组/二组/三组）。
         maybe_draw_groups(ctx);
@@ -3819,6 +3901,9 @@ impl StableServerExtension for KplNaming {
     /// （CN 容器原始引用是 CompetitionRank），这里会立刻改回来，保证当天开打的
     /// 一定是我们的对阵。
     fn before_management_tick(&self, ctx: &mut StableServerCtx<'_>) {
+        // S/A/B 同级：每个 tick 都确认 A 组还是 div0（引擎若在赛季末 rebuild
+        // 联赛时写回 div1，这里马上改回去，避免下一次升降级判定读到旧值）。
+        enforce_same_tier(ctx);
         // 先把 45 场打完的 S/A/B 积分表补回 10 队，再改季后赛对阵。5/4 国际杯
         // 抽签紧跟在 tick 开始后，这一步是抽签前最后一次修正数据的机会。
         maybe_restore_fillers(ctx);
@@ -3846,6 +3931,8 @@ impl StableServerExtension for KplNaming {
                     rename_cn_all(ctx);
                     maybe_sab_seed(ctx);
                     set_bo(ctx);
+                    // 新赛季联赛记录重建后立刻恢复 S/A/B 同级。
+                    enforce_same_tier(ctx);
                     zero_ab_prizes(ctx);
                     // 每档联赛刚建好（含 6/22 夏季赛 = 转会期开始）：抽签 + push。
                     maybe_draw_groups(ctx);
