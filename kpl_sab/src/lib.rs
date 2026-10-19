@@ -4256,16 +4256,16 @@ fn po_row_src(slot: usize) -> String {
       color: #161721ff;
       rounding: Uniform {{ rounding: 8; }}
       ignore_event: true;
-    }}
 
-    #logo:image {{
-      width: 32px;
-      height: 32px;
-      anchor_x: 0.5;
-      pivot_x: 0.5;
-      anchor_y: 0.5;
-      pivot_y: 0.5;
-      ignore_event: true;
+      #logo:image {{
+        width: 32px;
+        height: 32px;
+        anchor_x: 0.5;
+        pivot_x: 0.5;
+        anchor_y: 0.5;
+        pivot_y: 0.5;
+        ignore_event: true;
+      }}
     }}
 
     #name:label {{
@@ -4319,16 +4319,16 @@ fn po_row_src(slot: usize) -> String {
       color: #161721ff;
       rounding: Uniform {{ rounding: 8; }}
       ignore_event: true;
-    }}
 
-    #logo:image {{
-      width: 32px;
-      height: 32px;
-      anchor_x: 0.5;
-      pivot_x: 0.5;
-      anchor_y: 0.5;
-      pivot_y: 0.5;
-      ignore_event: true;
+      #logo:image {{
+        width: 32px;
+        height: 32px;
+        anchor_x: 0.5;
+        pivot_x: 0.5;
+        anchor_y: 0.5;
+        pivot_y: 0.5;
+        ignore_event: true;
+      }}
     }}
 
     #name:label {{
@@ -4886,3 +4886,53 @@ fn init(host: &StableHost) -> StableMod {
 }
 
 declare_stable_mod!(init);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// UI 源必须能解析成「单节点 + 子节点树」，否则 spawn 会被 host 拒绝。
+    /// 这里只做纯文本校验，不写任何文件。
+    #[test]
+    fn sources_parse_into_node_trees() {
+        let names = |src: &str, label: &str| {
+            let n = po_parse_node(src).unwrap_or_else(|| panic!("parse {label}"));
+            assert!(!n.name.is_empty(), "{label}: empty node name");
+            // 去掉子节点后的自身源里不能再出现 `#child:` 声明
+            assert!(
+                !n.src.contains("
+  #"),
+                "{label}: own source still declares children:
+{}",
+                n.src
+            );
+            (n, label.to_string())
+        };
+        let (root, _) = names(PO_ROOT_SRC, "root");
+        assert_eq!(root.name, "po_ui");
+        let (btn, _) = names(PO_BTN_SRC, "btn");
+        assert_eq!(btn.name, "po_btn");
+        let (shell, _) = names(PO_SHELL_SRC, "shell");
+        assert_eq!(shell.kids.len(), 0);
+
+        let header = po_parse_node(&po_header_src()).expect("header");
+        let kids: Vec<&str> = header.kids.iter().map(|k| k.name.as_str()).collect();
+        assert_eq!(kids, ["title", "sub", "state", "close"]);
+
+        for slot in 0..PO_ROWS {
+            let card = po_parse_node(&po_row_src(slot)).expect("card");
+            assert_eq!(card.name, format!("r{slot}"));
+            let kids: Vec<&str> = card.kids.iter().map(|k| k.name.as_str()).collect();
+            assert_eq!(kids, ["card", "tag", "date", "team0", "divider", "team1"]);
+            for team in card.kids.iter().filter(|k| k.name.starts_with("team")) {
+                let sub: Vec<&str> = team.kids.iter().map(|k| k.name.as_str()).collect();
+                // 队徽 image 必须是 logo_slot 的子节点（原版就是这个结构），
+                // po_redraw 用的是 `teamX.logo_slot.logo`。
+                assert_eq!(sub, ["logo_slot", "name", "score"]);
+                let slot_kids: Vec<&str> =
+                    team.kids[0].kids.iter().map(|k| k.name.as_str()).collect();
+                assert_eq!(slot_kids, ["logo"]);
+            }
+        }
+    }
+}
