@@ -1457,6 +1457,26 @@ fn json_num_keys(json: &str) -> Vec<usize> {
     out
 }
 
+/// 挂名队不许买人：把它们的转会预算和工资预算清零。
+///
+/// 挂名队（TCG / ZQ / DSM 这类）只是凑数的空壳，队伍数据里有 `transfer_budget`
+/// 和 `salary_budget` 两个字段。引擎的 AI 会在转会期拿着预算去抢真 KPL 队的
+/// 选手，导致玩家开档后看到「自己的首发被挂名队买走了」。清零后它们出不起价，
+/// 转会窗口里就不会再出现在候选人的报价列表里。
+///
+/// 每个 management tick 都查一遍：赛季滚动 / 赞助结算后引擎可能把预算写回来。
+fn block_filler_transfers(ctx: &mut StableServerCtx<'_>) {
+    let teams: Vec<usize> = ctx.record_ids(RecordKindV1::Team);
+    for t in teams {
+        if !is_cn_filler(ctx, t) {
+            continue;
+        }
+        // 0 = 出不起任何报价。负数不写，避免引擎把它当成「欠债」触发别的逻辑。
+        ctx.team_set_i64(t, "transfer_budget", 0);
+        ctx.team_set_i64(t, "salary_budget", 0);
+    }
+}
+
 /// CN 赛区的挂名队：名字不在 KPL 名单里、且属于 CN 的联赛（S/A/B = 1/7/5，青训 11）。
 fn is_cn_filler(ctx: &StableServerCtx<'_>, t: usize) -> bool {
     if is_real_kpl(&team_name(ctx, t)) {
@@ -4127,6 +4147,8 @@ impl StableServerExtension for KplNaming {
         rename_bench(ctx);
         rename_cn_all(ctx);
         set_bo(ctx);
+        // 挂名队不许买人（开档时先清一次，之后每个 tick 复查）。
+        block_filler_transfers(ctx);
         // S/A/B 同级（A 组不再是「二级联赛」），赶在任何升降级判定之前。
         enforce_same_tier(ctx);
         zero_ab_prizes(ctx);
@@ -4156,6 +4178,8 @@ impl StableServerExtension for KplNaming {
         // S/A/B 同级：每个 tick 都确认 A 组还是 div0（引擎若在赛季末 rebuild
         // 联赛时写回 div1，这里马上改回去，避免下一次升降级判定读到旧值）。
         enforce_same_tier(ctx);
+        // 挂名队不许买人：转会预算清零，防止它们抢真 KPL 队的选手。
+        block_filler_transfers(ctx);
         // 先把 45 场打完的 S/A/B 积分表补回 10 队，再改季后赛对阵。5/4 国际杯
         // 抽签紧跟在 tick 开始后，这一步是抽签前最后一次修正数据的机会。
         maybe_restore_fillers(ctx);
@@ -4183,6 +4207,8 @@ impl StableServerExtension for KplNaming {
                     rename_cn_all(ctx);
                     maybe_sab_seed(ctx);
                     set_bo(ctx);
+                    // 新赛季赞助/预算会重算，挂名队又要清一次。
+                    block_filler_transfers(ctx);
                     // 新赛季联赛记录重建后立刻恢复 S/A/B 同级。
                     enforce_same_tier(ctx);
                     zero_ab_prizes(ctx);
