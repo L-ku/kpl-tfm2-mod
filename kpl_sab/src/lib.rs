@@ -4431,7 +4431,7 @@ struct PoState {
     in_game: bool,
     open: bool,
     frames: u64,
-    built: bool,
+    rows: usize,
     dirty: bool,
     fail: u32,
     handlers: bool,
@@ -4456,7 +4456,7 @@ fn po_tick(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>) {
             if s.in_game {
                 s.in_game = false;
                 s.open = false;
-                s.built = false;
+                s.rows = 0;
                 s.fail = 0;
             }
             return;
@@ -4545,17 +4545,22 @@ fn po_ensure_ui(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>) {
             return;
         }
     }
-    // 16 张卡各自是一棵子树；建好一次后不再每帧探测（ui_exists 是跨 host 调用）。
-    let need_rows = !st.lock().unwrap().built;
-    if need_rows {
-        let mut all = true;
-        for slot in 0..PO_ROWS {
+    // 16 张卡各自是一棵子树。每帧只建 3 棵（一整帧建 16 棵会让画面卡一下），
+    // 用 `rows` 记录建到第几张；全部建好后才开始绘制。
+    let mut rows = st.lock().unwrap().rows;
+    while rows < PO_ROWS {
+        for slot in rows..(rows + 3).min(PO_ROWS) {
             if !po_spawn_tree(ctx, &shell, &po_row_src(slot)) {
-                all = false;
+                return;
             }
         }
-        if all && ctx.ui_exists(&format!("{shell}.r{}.team1.score", PO_ROWS - 1)) {
-            st.lock().unwrap().built = true;
+        rows = (rows + 3).min(PO_ROWS);
+        if !ctx.ui_exists(&format!("{shell}.r{}.team0.name", rows - 1)) {
+            return; // 本批还没落地，下一帧再来
+        }
+        st.lock().unwrap().rows = rows;
+        if rows < PO_ROWS {
+            return;
         }
     }
     let close_path = format!("{shell}.header.close");
@@ -4861,7 +4866,7 @@ fn init(host: &StableHost) -> StableMod {
             in_game: false,
             open: false,
             frames: 0,
-            built: false,
+            rows: 0,
             dirty: false,
             fail: 0,
             handlers: false,
