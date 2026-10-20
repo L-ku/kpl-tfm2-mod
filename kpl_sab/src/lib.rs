@@ -11,9 +11,220 @@ use mod_api_stable::{
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 static START_DONE: AtomicBool = AtomicBool::new(false);
 static CURSOR: AtomicU64 = AtomicU64::new(0);
+
+// ============================ 每 tick 读取缓存 ============================
+// 主机 API 的 `record_get_json` 每次都是「先问长度、再取内容」两次 FFI 调用
+// 外加一次 JSON 解析。一个 management tick 里同一批记录会被六七个函数各读
+// 一遍（45 场 × 3 个容器 × maybe_reset_rounds / maybe_regroup / maybe_cards /
+// maybe_playoffs / maybe_restore_fillers / maybe_fill_b_playoffs），另外
+// `comp_league_name` 每被调一次就要把全部 League 扫一遍，而它自己在
+// `sab_comps` 里是逐容器调的 —— 光派生 S/A/B 容器 id 这一件事每 tick 就有
+// 几百次多余的 FFI。
+//
+// 这里加一层 per-tick 缓存：tick 开始时清空；**任何写操作会让相关条目失效**，
+// 保证同一个 tick 里写过的记录不会读到旧值。
+//
+// 用全局 Mutex 而不是 thread_local：钩子是否总在同一个线程上跑是主机的实现细节，
+// 用线程局部变量的话，`before_management_tick` 里的写操作只会让**当前线程**那份
+// 缓存失效，另一个线程上的副本照样留着旧值 —— 那就是静默的数据错误。
+static TICK_CACHE: OnceLock<Mutex<TickCache>> = OnceLock::new();
+
+fn tick_cache() -> &'static Mutex<TickCache> {
+    TICK_CACHE.get_or_init(|| Mutex::new(TickCache::default()))
+}
+
+/// 拿缓存锁；毒化（别的线程 panic 过）时继续用里面的值，不要让整局游戏跟着炸。
+fn lock_tick() -> std::sync::MutexGuard<'static, TickCache> {
+    tick_cache().lock().unwrap_or_else(|e| e.into_inner())
+}
+
+#[derive(Default)]
+struct TickCache {
+    /// Match.running_state 原始 JSON（is_played / match_result 共用）。
+    running: HashMap<usize, Option<String>>,
+    /// Match.team1 / team2 的原始 JSON；bool = 是不是 team2。
+    /// `match_team`（宽松解析）/ `po_team`（只认 Normal）/ `concrete_team` 共用。
+    match_side: HashMap<(usize, bool), Option<String>>,
+    match_date: HashMap<usize, String>,
+    team_name: HashMap<usize, String>,
+    team_league: HashMap<usize, Option<usize>>,
+    comp_mids: HashMap<usize, Option<Vec<usize>>>,
+    /// competition id → 所属联赛名（整张表一次建好，`Some` = 已建）。
+    comp_league_map: Option<HashMap<usize, Option<String>>>,
+    /// key = want_finalized
+    cn_comps: HashMap<bool, Vec<usize>>,
+    sab: Option<Option<SabComps>>,
+    sab_all: Option<Option<SabComps>>,
+    league_by_name: HashMap<String, Option<usize>>,
+    real_teams: Option<Vec<usize>>,
+}
+
+fn cache_clear() {
+    *lock_tick() = TickCache::default();
+}
+
+// ---- 跨 tick 的「这场打完了吗」缓存 ----
+// `before_management_tick` 每个 tick 都要把 45×3 场常规赛挨个问一遍
+// （maybe_normalize_dates / maybe_reset_rounds / maybe_regroup / maybe_cards /
+// maybe_playoffs / maybe_restore_fillers / maybe_fill_b_playoffs），一个 tick
+// 就是几百到上千次 record_get_json。而赛季越往后，其中「已经打完」的场次
+// 占比越高、答案也越不会再变。
+//
+// ⚠️ 铁律：这个缓存**只记「已打完」，绝不记「没打完」**。
+// 一场比赛只会从「没打完」变成「打完」，不会反过来；所以记住 `true` 是单调的、
+// 跨 tick 复用绝对安全。反过来，如果也缓存 `false`，那么一旦有一次
+// MatchFinished 事件没送到（主机事件积压有上限，属于实现细节），已打完的比赛
+// 就会被当成没打完，卡位赛/重分组会错过「第 30 场」这个只出现一次的窗口
+// ——轮次清零、重分组本身幂等，漏了还能补；卡位赛的窗口漏了就整季没了。
+// 所以「没打完」一律现读。省下来的仍然是绝大部分：赛季中后期绝大多数场次
+// 命中缓存，一次 FFI 都不用发。
+static PLAYED_CACHE: OnceLock<Mutex<PlayedCache>> = OnceLock::new();
+
+fn played_cache() -> &'static Mutex<PlayedCache> {
+    PLAYED_CACHE.get_or_init(|| Mutex::new(PlayedCache::default()))
+}
+
+fn lock_played() -> MutexGuard<'static, PlayedCache> {
+    played_cache().lock().unwrap_or_else(|e| e.into_inner())
+}
+
+#[derive(Default)]
+struct PlayedCache {
+    /// 只放「已打完」的 match id。
+    done: HashSet<usize>,
+    ticks: u32,
+}
+
+/// 保底清空周期。
+/// 只记 `true` 时，清空本身不会造成误判（下一次重新读而已），所以这个计时器
+/// 唯一的职责就是兜住「Match id 被复用」——新赛季重建比赛记录时若 id 撞上
+/// 上赛季某场「已打完」，缓存会把新比赛当成打完，进而错误触发轮次清零/重分组。
+/// 正常路径靠 SeasonRollover 事件精确清空，这里按每 16 个 tick 兜一次底；
+/// 代价摊薄下来每 tick 只有个位数次读取，值得。
+const PLAYED_CACHE_MAX_TICKS: u32 = 16;
+
+fn played_cache_reset() {
+    *lock_played() = PlayedCache::default();
+}
+
+fn played_cache_age() {
+    let mut c = lock_played();
+    c.ticks = c.ticks.wrapping_add(1);
+    if c.ticks >= PLAYED_CACHE_MAX_TICKS {
+        c.done.clear();
+        c.ticks = 0;
+    }
+}
+
+/// 某个记录被改写后，把可能因此过期的缓存条目丢掉（只丢相关的，不清整张表——
+/// 重分组/卡位赛那种连续写 15~30 场的循环里，整表清空等于没缓存）。
+fn cache_invalidate(kind: RecordKindV1, id: usize) {
+    let is_match = kind == RecordKindV1::Match;
+    {
+        let mut c = lock_tick();
+        match kind {
+            RecordKindV1::Match => {
+                c.running.remove(&id);
+                c.match_side.remove(&(id, false));
+                c.match_side.remove(&(id, true));
+                c.match_date.remove(&id);
+            }
+            RecordKindV1::LeagueCompetition => {
+                c.comp_mids.remove(&id);
+                // finalized / league_type 等字段会改变容器集合的派生结果
+                c.cn_comps.clear();
+                c.sab = None;
+                c.sab_all = None;
+            }
+            RecordKindV1::Team => {
+                c.team_name.remove(&id);
+                c.team_league.remove(&id);
+                c.real_teams = None;
+            }
+            RecordKindV1::League => {
+                c.comp_league_map = None;
+                c.league_by_name.clear();
+                c.cn_comps.clear();
+                c.sab = None;
+                c.sab_all = None;
+            }
+            _ => {}
+        }
+    }
+    // 「打完」缓存也一起丢掉：虽然没有代码直接写 running_state，但卡位赛会把
+    // Match 收回 2099 孤儿区再重新用掉，宁可多读一次。两把锁分开拿，避免
+    // 与 `is_played`（先 played 再 tick）形成相反的加锁顺序而互锁。
+    if is_match {
+        lock_played().done.remove(&id);
+    }
+}
+
+// 所有写操作都走这三个包装：先让相关缓存失效再写，避免同 tick 内读到旧值。
+fn rec_set_json(
+    ctx: &mut StableServerCtx<'_>,
+    kind: RecordKindV1,
+    id: usize,
+    path: &str,
+    json: &str,
+) -> bool {
+    cache_invalidate(kind, id);
+    ctx.record_set_json(kind, id, path, json)
+}
+
+fn rec_set_string(
+    ctx: &mut StableServerCtx<'_>,
+    kind: RecordKindV1,
+    id: usize,
+    path: &str,
+    value: &str,
+) -> bool {
+    cache_invalidate(kind, id);
+    ctx.record_set_string(kind, id, path, value)
+}
+
+fn rec_team_set_i64(ctx: &mut StableServerCtx<'_>, team_id: usize, path: &str, value: i64) -> bool {
+    cache_invalidate(RecordKindV1::Team, team_id);
+    ctx.team_set_i64(team_id, path, value)
+}
+
+/// 带缓存的 Match.running_state 读取。
+fn match_running(ctx: &StableServerCtx<'_>, mid: usize) -> Option<String> {
+    if let Some(v) = lock_tick().running.get(&mid).cloned() {
+        return v;
+    }
+    let v = ctx.record_get_json(RecordKindV1::Match, mid, "running_state");
+    lock_tick().running.insert(mid, v.clone());
+    v
+}
+
+/// 「这场打完了吗」。跨 tick 只复用肯定的答案（见上面的铁律）。
+///
+/// 锁：这里从不先拿 played 再拿 tick —— 看缓存的两次加锁之间有语句边界，
+/// 彼此不嵌套，所以同一时刻最多持有一把，不会与 `cache_invalidate` 形成环。
+fn is_played(ctx: &StableServerCtx<'_>, mid: usize) -> bool {
+    if lock_played().done.contains(&mid) {
+        return true;
+    }
+    // 同一 tick 里 match_result 可能刚读过，先吃那份。
+    let raw = lock_tick().running.get(&mid).cloned();
+    let raw = match raw {
+        Some(v) => v,
+        None => {
+            let v = ctx.record_get_json(RecordKindV1::Match, mid, "running_state");
+            lock_tick().running.insert(mid, v.clone());
+            v
+        }
+    };
+    let played = raw.map(|s| s.contains("End")).unwrap_or(false);
+    if played {
+        lock_played().done.insert(mid);
+    }
+    played
+}
 
 // (name, age, ovr, potential)
 //
@@ -388,7 +599,7 @@ fn apply(
     pot: i64,
     lane: Lane,
 ) {
-    ctx.record_set_string(RecordKindV1::Athlete, id, "name", name);
+    rec_set_string(ctx, RecordKindV1::Athlete, id, "name", name);
     ctx.athlete_set_i64(id, "age", age);
     set_potential(ctx, id, pot);
     set_stats(ctx, id, ovr, lane);
@@ -589,7 +800,7 @@ fn rename_bench(ctx: &mut StableServerCtx<'_>) {
                 None => format!("{}青训{}", team, next),
             };
             used.insert(sub.clone());
-            ctx.record_set_string(RecordKindV1::Athlete, *id, "name", &sub);
+            rec_set_string(ctx, RecordKindV1::Athlete, *id, "name", &sub);
             // 青训：能力和潜力都压到替补水平，避免一堆随机 90+ 的无名选手
             // 把数据集里的真人首发挤到替补席。
             make_trainee(ctx, *id);
@@ -810,7 +1021,12 @@ fn rename_cn_all(ctx: &mut StableServerCtx<'_>) {
     // 每次开服 / 每个管理事件都跑一遍：新生成的选手也会被换成中文名。
     // 顺带做一次全局查重：中国赛区里重名的选手，后出现的会改名，保证不重名。
     // 已经是唯一中文名的会保持原样，所以重复执行是安全的。
-
+    //
+    // 一次全量扫描 = 每个选手 1~3 次 record_get_json（名字 + 所属队 + 自由球员
+    // 还要读 soloranks），几百名选手就是上千次 FFI。转会期里 TransferCompleted
+    // 事件是成批来的，所以调用方（after_management_tick）把这件事合并成
+    // 「事件循环结束后跑一次」—— 不是跑到一半就跳过，那样会漏掉同 tick 里
+    // 后面才完成转会的选手。
     let lg_region = league_regions(ctx);
     let teams = cn_team_table(ctx, &lg_region);
     let curated: HashSet<&str> = CN_NAMES.iter().copied().collect();
@@ -876,7 +1092,7 @@ fn rename_cn_all(ctx: &mut StableServerCtx<'_>) {
     for id in to_rename {
         let Some(next_name) = pool.next() else { break };
         kept.insert(next_name.clone());
-        ctx.record_set_string(RecordKindV1::Athlete, id, "name", &next_name);
+        rec_set_string(ctx, RecordKindV1::Athlete, id, "name", &next_name);
     }
 }
 
@@ -909,7 +1125,7 @@ fn set_need_win(ctx: &mut StableServerCtx<'_>, mid: usize, want: &str) {
         .record_get_json(RecordKindV1::Match, mid, "need_win")
         .unwrap_or_default();
     if cur.trim() != want {
-        ctx.record_set_json(RecordKindV1::Match, mid, "need_win", want);
+        rec_set_json(ctx, RecordKindV1::Match, mid, "need_win", want);
     }
 }
 
@@ -1030,6 +1246,15 @@ fn parse_standings(json: &str) -> Vec<StandRow> {
 
 /// CN KPL（region_id=1，S/A/B 三个联赛）的 competition id，按 finalized 过滤。
 fn cn_d1_comps(ctx: &StableServerCtx<'_>, want_finalized: bool) -> Vec<usize> {
+    if let Some(v) = lock_tick().cn_comps.get(&want_finalized).cloned() {
+        return v;
+    }
+    let v = cn_d1_comps_uncached(ctx, want_finalized);
+    lock_tick().cn_comps.insert(want_finalized, v.clone());
+    v
+}
+
+fn cn_d1_comps_uncached(ctx: &StableServerCtx<'_>, want_finalized: bool) -> Vec<usize> {
     let mut comps = Vec::new();
     for lid in ctx.record_ids(RecordKindV1::League) {
         let region = ctx
@@ -1099,12 +1324,12 @@ fn make_single_rr(ctx: &mut StableServerCtx<'_>) {
             "[{}]",
             ids[..single_rr].iter().map(|x| x.to_string()).collect::<Vec<_>>().join(",")
         );
-        ctx.record_set_json(RecordKindV1::LeagueCompetition, cid, "matches", &json);
+        rec_set_json(ctx, RecordKindV1::LeagueCompetition, cid, "matches", &json);
         // 新砍掉的 return-leg match 改到 2099-12-31（未来）：清幽灵轮 + 让引擎永不把它
         // 当「due」的过去赛程。⚠️ 之前错设成 2000-01-01（过去），引擎会把 540 个过去日期的
         // 孤儿当欠赛一格格补打，卡在同一天打不同队。
         for &mid in &ids[single_rr..] {
-            ctx.record_set_string(RecordKindV1::Match, mid, "date", "2099-12-31T00:00:00");
+            rec_set_string(ctx, RecordKindV1::Match, mid, "date", "2099-12-31T00:00:00");
         }
     }
     if max_rounds >= 2 {
@@ -1120,12 +1345,8 @@ fn make_single_rr(ctx: &mut StableServerCtx<'_>) {
 /// 不会误伤杯赛/季后赛/练习赛等其他 Match 记录。
 fn heal_orphan_dates(ctx: &mut StableServerCtx<'_>) {
     for mid in ctx.record_ids(RecordKindV1::Match) {
-        if ctx
-            .record_get_string(RecordKindV1::Match, mid, "date")
-            .map(|d| d.starts_with("2000-"))
-            .unwrap_or(false)
-        {
-            ctx.record_set_string(RecordKindV1::Match, mid, "date", "2099-12-31T00:00:00");
+        if match_date(ctx, mid).starts_with("2000-") {
+            rec_set_string(ctx, RecordKindV1::Match, mid, "date", "2099-12-31T00:00:00");
         }
     }
 }
@@ -1168,21 +1389,33 @@ fn trim_year_schedule(ctx: &mut StableServerCtx<'_>, keep_rounds: usize) {
         for (s, e) in removes {
             out.replace_range(s..e, "");
         }
-        ctx.record_set_json(RecordKindV1::YearSchedule, sid, "schedules", &out);
+        rec_set_json(ctx, RecordKindV1::YearSchedule, sid, "schedules", &out);
     }
 }
 
 /// 根据 competition id 反查所属联赛名（TACC/TACC2/TACJ/TACJ2...）。
+/// 缓存版：第一次查会把「全部 League 的 competitions → 联赛名」一次建成表，
+/// 同一 tick 里后续的 cid 直接命中。旧写法每查一个 cid 就要把全部 League
+/// 连同 competitions 数组读一遍，而 `sab_comps` 本身又是逐容器调它。
 fn comp_league_name(ctx: &StableServerCtx<'_>, cid: usize) -> Option<String> {
+    if let Some(m) = lock_tick().comp_league_map.clone() {
+        return m.get(&cid).cloned().flatten();
+    }
+    let mut m: HashMap<usize, Option<String>> = HashMap::new();
     for lid in ctx.record_ids(RecordKindV1::League) {
         let Some(c) = ctx.record_get_json(RecordKindV1::League, lid, "competitions") else {
             continue;
         };
-        if parse_ids(&c).contains(&cid) {
-            return ctx.record_get_string(RecordKindV1::League, lid, "name");
+        let name = ctx.record_get_string(RecordKindV1::League, lid, "name");
+        for cid in parse_ids(&c) {
+            // 旧实现返回「第一个」命中 cid 的联赛；这里保持一致（先到先得），
+            // 万一两个联赛引用了同一个 competition 也不会换掉结果。
+            m.entry(cid).or_insert_with(|| name.clone());
         }
     }
-    None
+    let got = m.get(&cid).cloned().flatten();
+    lock_tick().comp_league_map = Some(m);
+    got
 }
 
 /// 把上赛季（finalized 的 CN D1 competition）最终名次存到 mod 存档命名空间，
@@ -1221,8 +1454,27 @@ fn record_last_season(ctx: &mut StableServerCtx<'_>) {
 }
 
 fn team_name(ctx: &StableServerCtx<'_>, tid: usize) -> String {
-    ctx.record_get_string(RecordKindV1::Team, tid, "name")
-        .unwrap_or_else(|| format!("#{}", tid))
+    if let Some(v) = lock_tick().team_name.get(&tid).cloned() {
+        return v;
+    }
+    let v = ctx
+        .record_get_string(RecordKindV1::Team, tid, "name")
+        .unwrap_or_else(|| format!("#{}", tid));
+    // 队名可能被 rename_china / rename_cn_all 改，但那些都是写操作、会清缓存。
+    lock_tick().team_name.insert(tid, v.clone());
+    v
+}
+
+/// 带缓存的 `Team.league_id`。
+fn team_league(ctx: &StableServerCtx<'_>, t: usize) -> Option<usize> {
+    if let Some(v) = lock_tick().team_league.get(&t).copied() {
+        return v;
+    }
+    let v = ctx
+        .record_get_json(RecordKindV1::Team, t, "league_id")
+        .and_then(|s| s.trim().parse::<usize>().ok());
+    lock_tick().team_league.insert(t, v);
+    v
 }
 
 // ============================ 内存扫描：国际杯种子分配表 ============================
@@ -1554,14 +1806,26 @@ fn json_num_keys(json: &str) -> Vec<usize> {
 ///
 /// 每个 management tick 都查一遍：赛季滚动 / 赞助结算后引擎可能把预算写回来。
 fn block_filler_transfers(ctx: &mut StableServerCtx<'_>) {
-    let teams: Vec<usize> = ctx.record_ids(RecordKindV1::Team);
+    // 只清 CN 赛区联赛里的队，别把全部 Team 都扫一遍（`is_cn_filler` 本身
+    // 要先读队名，全扫等于每 tick 几十次 FFI）。
+    let teams: Vec<usize> = ctx
+        .record_ids(RecordKindV1::Team)
+        .into_iter()
+        .filter(|&t| matches!(team_league(ctx, t), Some(1) | Some(5) | Some(7) | Some(11)))
+        .collect();
     for t in teams {
         if !is_cn_filler(ctx, t) {
             continue;
         }
         // 0 = 出不起任何报价。负数不写，避免引擎把它当成「欠债」触发别的逻辑。
-        ctx.team_set_i64(t, "transfer_budget", 0);
-        ctx.team_set_i64(t, "salary_budget", 0);
+        // 先读再写：预算已经是 0 就不要写 —— 写会把记录标脏，引擎每 tick 都要
+        // 重新持久化，这是「推挡慢」的一个来源。
+        for field in ["transfer_budget", "salary_budget"] {
+            let cur = ctx.team_get_i64(t, field);
+            if cur != Some(0) {
+                rec_team_set_i64(ctx, t, field, 0);
+            }
+        }
     }
 }
 
@@ -1570,10 +1834,7 @@ fn is_cn_filler(ctx: &StableServerCtx<'_>, t: usize) -> bool {
     if is_real_kpl(&team_name(ctx, t)) {
         return false;
     }
-    let lid = ctx
-        .record_get_json(RecordKindV1::Team, t, "league_id")
-        .and_then(|s| s.trim().parse::<usize>().ok());
-    matches!(lid, Some(1) | Some(5) | Some(7) | Some(11))
+    matches!(team_league(ctx, t), Some(1) | Some(5) | Some(7) | Some(11))
 }
 
 /// 一次性替换 JSON 对象里 `"<old>":` 的键（不会链式替换）。只替换深度 >= min_depth
@@ -1789,7 +2050,7 @@ fn maybe_swap_cup_fillers(ctx: &mut StableServerCtx<'_>) {
             };
             let want = json_swap_keys(&cur, &map, min_depth);
             if want != cur {
-                ctx.record_set_json(RecordKindV1::TournamentCompetition, s.tid, field, &want);
+                rec_set_json(ctx, RecordKindV1::TournamentCompetition, s.tid, field, &want);
             }
         }
         for &m in &s.gms {
@@ -1799,7 +2060,7 @@ fn maybe_swap_cup_fillers(ctx: &mut StableServerCtx<'_>) {
                 };
                 let want = json_swap_teams(&cur, &map);
                 if want != cur {
-                    ctx.record_set_json(RecordKindV1::Match, m, field, &want);
+                    rec_set_json(ctx, RecordKindV1::Match, m, field, &want);
                 }
             }
         }
@@ -1897,7 +2158,7 @@ fn set_comp_playoffs(ctx: &mut StableServerCtx<'_>, cid: usize, ids: &[usize]) -
     if cur.trim() == want {
         return false;
     }
-    ctx.record_set_json(RecordKindV1::LeagueCompetition, cid, "playoffs", &want)
+    rec_set_json(ctx, RecordKindV1::LeagueCompetition, cid, "playoffs", &want)
 }
 
 fn po_loser_of(ctx: &StableServerCtx<'_>, mid: usize) -> Option<usize> {
@@ -1963,7 +2224,7 @@ fn enforce_same_tier(ctx: &mut StableServerCtx<'_>) {
             .record_get_json(RecordKindV1::League, lid, "division")
             .unwrap_or_default();
         if cur.trim() != want {
-            ctx.record_set_json(RecordKindV1::League, lid, "division", want);
+            rec_set_json(ctx, RecordKindV1::League, lid, "division", want);
         }
     }
     // 旧存档里可能已经排好了「S组后2 vs A组前2」的升降级赛。已经开打的保留
@@ -1993,19 +2254,17 @@ fn cancel_stale_promotion(ctx: &mut StableServerCtx<'_>) {
         if ids.iter().any(|m| is_played(ctx, *m)) {
             continue;
         }
-        ctx.record_set_json(RecordKindV1::LeagueCompetition, cid, "promotion_series", "[]");
-        ctx.record_set_json(
+        rec_set_json(ctx, RecordKindV1::LeagueCompetition, cid, "promotion_series", "[]");
+        rec_set_json(ctx,
             RecordKindV1::LeagueCompetition,
             cid,
             "promotion_series_finalized",
             "true",
         );
         for mid in ids {
-            let d = ctx
-                .record_get_string(RecordKindV1::Match, mid, "date")
-                .unwrap_or_default();
+            let d = match_date(ctx, mid);
             if !d.starts_with("2099") && !d.is_empty() {
-                ctx.record_set_string(
+                rec_set_string(ctx,
                     RecordKindV1::Match,
                     mid,
                     "date",
@@ -2032,7 +2291,7 @@ fn zero_ab_prizes(ctx: &mut StableServerCtx<'_>) {
         if t == "[0.0,0.0,0.0,0.0,0.0]" || t == "[0,0,0,0,0]" || t == "[]" {
             continue;
         }
-        ctx.record_set_json(
+        rec_set_json(ctx,
             RecordKindV1::League,
             lid,
             "prize_money",
@@ -2056,8 +2315,19 @@ const PO_ROUND_CN: [&str; 16] = [
 ];
 
 fn po_day(ctx: &StableServerCtx<'_>, mid: usize) -> String {
-    ctx.record_get_string(RecordKindV1::Match, mid, "date")
-        .unwrap_or_default()
+    match_date(ctx, mid)
+}
+
+/// Match.date（per-tick 缓存）：季后赛面板 16 个槽位、新闻每一行都要读。
+fn match_date(ctx: &StableServerCtx<'_>, mid: usize) -> String {
+    if let Some(v) = lock_tick().match_date.get(&mid).cloned() {
+        return v;
+    }
+    let v = ctx
+        .record_get_string(RecordKindV1::Match, mid, "date")
+        .unwrap_or_default();
+    lock_tick().match_date.insert(mid, v.clone());
+    v
 }
 
 /// 比赛日期显示成 `M/D`；带时刻的（面板用）显示成 `M/D HH:MM`。
@@ -2080,7 +2350,7 @@ fn po_md(d: &str) -> String {
 /// `{"LoserOf":N}` 里的 N 是**比赛 id**，`match_team`（用宽松的 parse_ids）
 /// 会把它们当成队 id，显示出来就是错的，这里必须排除。
 fn po_team(ctx: &StableServerCtx<'_>, mid: usize, field: &str) -> Option<usize> {
-    let j = ctx.record_get_json(RecordKindV1::Match, mid, field)?;
+    let j = match_side(ctx, mid, field)?;
     let p = j.find("\"Normal\"")?;
     parse_ids(&j[p..]).first().copied()
 }
@@ -2287,7 +2557,7 @@ fn maybe_playoffs(ctx: &mut StableServerCtx<'_>) {
                 .record_get_json(RecordKindV1::Match, mid, field)
                 .unwrap_or_default();
             if cur.trim() != want.trim() {
-                ctx.record_set_json(RecordKindV1::Match, mid, field, want);
+                rec_set_json(ctx, RecordKindV1::Match, mid, field, want);
             }
         }
     }
@@ -2304,7 +2574,7 @@ fn maybe_playoffs(ctx: &mut StableServerCtx<'_>) {
                 .record_get_json(RecordKindV1::LeagueCompetition, cid, "finalized")
                 .unwrap_or_default();
             if fin.trim() != "true" {
-                ctx.record_set_json(RecordKindV1::LeagueCompetition, cid, "finalized", "true");
+                rec_set_json(ctx, RecordKindV1::LeagueCompetition, cid, "finalized", "true");
             }
         }
         // 名次编码：引擎每个容器按 6 队双败模板算名次，我们的槽序从 5 名
@@ -2462,20 +2732,24 @@ fn real_teams_in(ctx: &StableServerCtx<'_>, cid: usize) -> Vec<usize> {
     out
 }
 
-fn match_team(ctx: &StableServerCtx<'_>, mid: usize, field: &str) -> Option<usize> {
-    ctx.record_get_json(RecordKindV1::Match, mid, field)
-        .and_then(|j| parse_ids(&j).first().copied())
+/// Match.team1 / team2 的原始 JSON（per-tick 缓存）。
+fn match_side(ctx: &StableServerCtx<'_>, mid: usize, field: &str) -> Option<String> {
+    let second = field == "team2";
+    if let Some(v) = lock_tick().match_side.get(&(mid, second)).cloned() {
+        return v;
+    }
+    let v = ctx.record_get_json(RecordKindV1::Match, mid, field);
+    lock_tick().match_side.insert((mid, second), v.clone());
+    v
 }
 
-fn is_played(ctx: &StableServerCtx<'_>, mid: usize) -> bool {
-    ctx.record_get_json(RecordKindV1::Match, mid, "running_state")
-        .map(|s| s.contains("End"))
-        .unwrap_or(false)
+fn match_team(ctx: &StableServerCtx<'_>, mid: usize, field: &str) -> Option<usize> {
+    match_side(ctx, mid, field).and_then(|j| parse_ids(&j).first().copied())
 }
 
 fn set_match_teams(ctx: &mut StableServerCtx<'_>, mid: usize, a: usize, b: usize) -> bool {
-    let ok1 = ctx.record_set_json(RecordKindV1::Match, mid, "team1", &format!("{{\"Normal\":{}}}", a));
-    let ok2 = ctx.record_set_json(RecordKindV1::Match, mid, "team2", &format!("{{\"Normal\":{}}}", b));
+    let ok1 = rec_set_json(ctx, RecordKindV1::Match, mid, "team1", &format!("{{\"Normal\":{}}}", a));
+    let ok2 = rec_set_json(ctx, RecordKindV1::Match, mid, "team2", &format!("{{\"Normal\":{}}}", b));
     ok1 && ok2
 }
 
@@ -2565,7 +2839,7 @@ fn zero_standings(ctx: &mut StableServerCtx<'_>, cid: usize) -> bool {
         })
         .collect::<Vec<_>>()
         .join(",");
-    ctx.record_set_json(
+    rec_set_json(ctx,
         RecordKindV1::LeagueCompetition,
         cid,
         "standings",
@@ -2754,6 +3028,7 @@ fn shift_day(date: &str, n: i64) -> String {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
 struct SabComps {
     s: usize,
     a: usize,
@@ -2762,6 +3037,15 @@ struct SabComps {
 
 /// 当前赛季活跃的 S/A/B 三个 competition id（TACC/TACC2/TACJ）。
 fn sab_comps(ctx: &StableServerCtx<'_>) -> Option<SabComps> {
+    if let Some(v) = lock_tick().sab {
+        return v;
+    }
+    let v = sab_comps_uncached(ctx);
+    lock_tick().sab = Some(v);
+    v
+}
+
+fn sab_comps_uncached(ctx: &StableServerCtx<'_>) -> Option<SabComps> {
     let (mut s, mut a, mut b) = (None, None, None);
     for cid in cn_d1_competitions(ctx) {
         match comp_league_name(ctx, cid).as_deref() {
@@ -2778,6 +3062,15 @@ fn sab_comps(ctx: &StableServerCtx<'_>) -> Option<SabComps> {
 /// 之后 `cn_d1_competitions`（只收未 finalize 的）里就没有 A/B 了，
 /// `sab_comps` 随即返回 None。同名的只取 id 最大的（最新一届）。
 fn sab_comps_all(ctx: &StableServerCtx<'_>) -> Option<SabComps> {
+    if let Some(v) = lock_tick().sab_all {
+        return v;
+    }
+    let v = sab_comps_all_uncached(ctx);
+    lock_tick().sab_all = Some(v);
+    v
+}
+
+fn sab_comps_all_uncached(ctx: &StableServerCtx<'_>) -> Option<SabComps> {
     let (mut s, mut a, mut b) = (None, None, None);
     for cid in ctx.record_ids(RecordKindV1::LeagueCompetition) {
         let slot = match comp_league_name(ctx, cid).as_deref() {
@@ -2792,8 +3085,14 @@ fn sab_comps_all(ctx: &StableServerCtx<'_>) -> Option<SabComps> {
 }
 
 fn comp_mids(ctx: &StableServerCtx<'_>, cid: usize) -> Option<Vec<usize>> {
-    let mj = ctx.record_get_json(RecordKindV1::LeagueCompetition, cid, "matches")?;
-    Some(parse_ids(&mj))
+    if let Some(v) = lock_tick().comp_mids.get(&cid).cloned() {
+        return v;
+    }
+    let v = ctx
+        .record_get_json(RecordKindV1::LeagueCompetition, cid, "matches")
+        .map(|mj| parse_ids(&mj));
+    lock_tick().comp_mids.insert(cid, v.clone());
+    v
 }
 
 /// 赛季初（三组一场未打）重排三组日期：
@@ -2818,9 +3117,7 @@ fn maybe_normalize_dates(ctx: &mut StableServerCtx<'_>) {
         }
         mids.push(v);
     }
-    let Some(base_date) = ctx.record_get_string(RecordKindV1::Match, mids[0][0], "date") else {
-        return;
-    };
+    let base_date = match_date(ctx, mids[0][0]);
     if base_date.is_empty() {
         return;
     }
@@ -2834,11 +3131,9 @@ fn maybe_normalize_dates(ctx: &mut StableServerCtx<'_>) {
             let offset = i as i64 + seg * REGROUP_GAP_DAYS;
             let want = format!("{}T{}", shift_day(&base_day, offset), times[idx]);
             let mid = mids[idx][i];
-            let cur = ctx
-                .record_get_string(RecordKindV1::Match, mid, "date")
-                .unwrap_or_default();
+            let cur = match_date(ctx, mid);
             if want != cur {
-                ctx.record_set_string(RecordKindV1::Match, mid, "date", &want);
+                rec_set_string(ctx, RecordKindV1::Match, mid, "date", &want);
             }
         }
     }
@@ -2903,16 +3198,22 @@ fn write_segment(
 /// 联赛名 → League id（TACC=1 / TACC2=7 / TACJ=5 ...），从 League 记录动态查，
 /// 不硬编码，免得 data_setting 改顺序后搬错。
 fn league_id_by_name(ctx: &StableServerCtx<'_>, name: &str) -> Option<usize> {
+    if let Some(v) = lock_tick().league_by_name.get(name).copied() {
+        return v;
+    }
+    let mut found = None;
     for lid in ctx.record_ids(RecordKindV1::League) {
         if ctx
             .record_get_string(RecordKindV1::League, lid, "name")
             .as_deref()
             == Some(name)
         {
-            return Some(lid);
+            found = Some(lid);
+            break;
         }
     }
-    None
+    lock_tick().league_by_name.insert(name.to_string(), found);
+    found
 }
 
 // ============================ 每档第一轮抽签 ============================
@@ -2985,7 +3286,7 @@ fn rr_all_pairs(teams: &[usize]) -> Vec<(usize, usize)> {
 /// 识别/杯赛种子都靠 name/region_id）。
 fn set_league_display(ctx: &mut StableServerCtx<'_>, league_name: &str, text_key: &str) {
     if let Some(lid) = league_id_by_name(ctx, league_name) {
-        let _ = ctx.record_set_string(
+        let _ = rec_set_string(ctx,
             RecordKindV1::League,
             lid,
             "full_name",
@@ -3086,7 +3387,7 @@ fn maybe_draw_groups(ctx: &mut StableServerCtx<'_>) {
         if let Some(lid) = league_id_by_name(ctx, league_names[i]) {
             let lid = lid.to_string();
             for &t in &rows {
-                ctx.record_set_json(RecordKindV1::Team, t, "league_id", &lid);
+                rec_set_json(ctx, RecordKindV1::Team, t, "league_id", &lid);
             }
         }
     }
@@ -3110,8 +3411,13 @@ fn maybe_draw_groups(ctx: &mut StableServerCtx<'_>) {
             if lid.map(|l| cn_lids.contains(&l)).unwrap_or(false) {
                 let name = team_name(ctx, t);
                 if !is_real_kpl(&name) && !is_filler_team(&name) {
-                    let _ = ctx
-                        .record_set_json(RecordKindV1::Team, t, "league_id", &kgl_lid.to_string());
+                    let _ = rec_set_json(
+                        ctx,
+                        RecordKindV1::Team,
+                        t,
+                        "league_id",
+                        &kgl_lid.to_string(),
+                    );
                 }
             }
         }
@@ -3218,7 +3524,7 @@ fn write_standings_raw(ctx: &mut StableServerCtx<'_>, cid: usize, ids: &[usize])
         })
         .collect::<Vec<_>>()
         .join(",");
-    ctx.record_set_json(
+    rec_set_json(ctx,
         RecordKindV1::LeagueCompetition,
         cid,
         "standings",
@@ -3388,7 +3694,7 @@ fn maybe_restore_fillers(ctx: &mut StableServerCtx<'_>) {
 /// 只认 `{"Normal":id}` 这种已经落地的队伍引用。`CompetitionRank` / `LeagueRank`
 /// 里也带数字，但那是容器 id/名次，不是队伍 id，不能混用。
 fn concrete_team(ctx: &StableServerCtx<'_>, mid: usize, field: &str) -> Option<usize> {
-    let j = ctx.record_get_json(RecordKindV1::Match, mid, field)?;
+    let j = match_side(ctx, mid, field)?;
     let p = j.find("\"Normal\"")?;
     parse_ids(&j[p..]).first().copied()
 }
@@ -3514,7 +3820,7 @@ fn rewrite_standings_keys(ctx: &mut StableServerCtx<'_>, cid: usize, teams: &[us
         })
         .collect::<Vec<_>>()
         .join(",");
-    ctx.record_set_json(
+    rec_set_json(ctx,
         RecordKindV1::LeagueCompetition,
         cid,
         "standings",
@@ -3536,7 +3842,7 @@ fn move_group_to_container(
     let mut moved = 0usize;
     if let Some(lid) = lid {
         for &t in teams {
-            if ctx.record_set_json(RecordKindV1::Team, t, "league_id", &lid.to_string()) {
+            if rec_set_json(ctx, RecordKindV1::Team, t, "league_id", &lid.to_string()) {
                 moved += 1;
             }
         }
@@ -3555,7 +3861,7 @@ fn move_group_to_container(
 
 /// 从 Match.running_state 读比赛结果：`{"End":{"winner":12,"team1_score":4,...}}`。
 fn match_result(ctx: &StableServerCtx<'_>, mid: usize) -> Option<(usize, i64, i64)> {
-    let j = ctx.record_get_json(RecordKindV1::Match, mid, "running_state")?;
+    let j = match_running(ctx, mid)?;
     if !j.contains("\"End\"") {
         return None;
     }
@@ -3594,9 +3900,7 @@ fn find_orphan_matches(ctx: &StableServerCtx<'_>, n: usize) -> Vec<usize> {
         if used.contains(&mid) || is_played(ctx, mid) {
             continue;
         }
-        let d = ctx
-            .record_get_string(RecordKindV1::Match, mid, "date")
-            .unwrap_or_default();
+        let d = match_date(ctx, mid);
         if d.starts_with("2099") {
             out.push(mid);
         }
@@ -3618,7 +3922,7 @@ fn append_matches_to_comp(ctx: &mut StableServerCtx<'_>, cid: usize, extra: &[us
         "[{}]",
         ids.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(",")
     );
-    ctx.record_set_json(RecordKindV1::LeagueCompetition, cid, "matches", &json)
+    rec_set_json(ctx, RecordKindV1::LeagueCompetition, cid, "matches", &json)
 }
 
 /// 把追加的卡位赛 Match 从 competition.matches 里摘掉，并送回 2099 孤儿区。
@@ -3633,10 +3937,10 @@ fn remove_card_matches(ctx: &mut StableServerCtx<'_>, cid: usize, extra: &[usize
             "[{}]",
             ids.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(",")
         );
-        ctx.record_set_json(RecordKindV1::LeagueCompetition, cid, "matches", &json);
+        rec_set_json(ctx, RecordKindV1::LeagueCompetition, cid, "matches", &json);
     }
     for &m in extra {
-        ctx.record_set_string(
+        rec_set_string(ctx,
             RecordKindV1::Match,
             m,
             "date",
@@ -3654,7 +3958,7 @@ fn mark_practice_slots(ctx: &mut StableServerCtx<'_>, mids: &[Vec<usize>], end: 
     for v in mids {
         for &mid in v.iter().take(end.min(45)) {
             if is_played(ctx, mid)
-                && ctx.record_set_json(RecordKindV1::Match, mid, "is_practice", "true")
+                && rec_set_json(ctx, RecordKindV1::Match, mid, "is_practice", "true")
             {
                 n += 1;
             }
@@ -3671,9 +3975,7 @@ fn latest_played_day(ctx: &StableServerCtx<'_>, mids: &[Vec<usize>], end: usize)
             if !is_played(ctx, mid) {
                 continue;
             }
-            let d = ctx
-                .record_get_string(RecordKindV1::Match, mid, "date")
-                .unwrap_or_default();
+            let d = match_date(ctx, mid);
             if d.is_empty() {
                 continue;
             }
@@ -3686,6 +3988,9 @@ fn latest_played_day(ctx: &StableServerCtx<'_>, mids: &[Vec<usize>], end: usize)
 }
 
 fn match_day(ctx: &StableServerCtx<'_>, mid: usize) -> Option<String> {
+    // 语义必须和旧版完全一致：date 字段**存在**就返回 Some（哪怕是个空串），
+    // 只有读不到字段才返回 None。`maybe_cards` 靠这个区分「没日期」和「空日期」。
+    // 所以这里不能用 `match_date`（它把 None 变成 ""），单独读一次。
     ctx.record_get_string(RecordKindV1::Match, mid, "date")
         .map(|d| d.split('T').next().unwrap_or(&d).to_string())
 }
@@ -3817,6 +4122,9 @@ fn notify_card_results(
 /// 旧写法只扫「未 finalize」容器的积分表：16 场季后赛打完后 A/B 被强制
 /// finalize，就只剩 S 组，新闻只推给一个联赛（玩家实测反馈「只退给一个联赛里」）。
 fn all_real_kpl_team_ids(ctx: &StableServerCtx<'_>) -> Vec<usize> {
+    if let Some(v) = lock_tick().real_teams.clone() {
+        return v;
+    }
     let mut ids: Vec<usize> = ctx
         .record_ids(RecordKindV1::Team)
         .into_iter()
@@ -3824,6 +4132,7 @@ fn all_real_kpl_team_ids(ctx: &StableServerCtx<'_>) -> Vec<usize> {
         .collect();
     ids.sort_unstable();
     ids.dedup();
+    lock_tick().real_teams = Some(ids.clone());
     ids
 }
 
@@ -3940,10 +4249,10 @@ fn maybe_cards(ctx: &mut StableServerCtx<'_>) {
         for (i, &mid) in card_mids.iter().enumerate() {
             let (x, y) = pairs[i];
             set_match_teams(ctx, mid, x, y);
-            ctx.record_set_json(RecordKindV1::Match, mid, "is_practice", "false");
-            ctx.record_set_json(RecordKindV1::Match, mid, "game_rule", "\"Game5V5\"");
-            ctx.record_set_json(RecordKindV1::Match, mid, "need_win", &CARD_NEED_WIN.to_string());
-            ctx.record_set_string(
+            rec_set_json(ctx, RecordKindV1::Match, mid, "is_practice", "false");
+            rec_set_json(ctx, RecordKindV1::Match, mid, "game_rule", "\"Game5V5\"");
+            rec_set_json(ctx, RecordKindV1::Match, mid, "need_win", &CARD_NEED_WIN.to_string());
+            rec_set_string(ctx,
                 RecordKindV1::Match,
                 mid,
                 "date",
@@ -4227,6 +4536,11 @@ struct KplNaming;
 
 impl StableServerExtension for KplNaming {
     fn on_server_start(&self, ctx: &mut StableServerCtx<'_>) {
+        // 进服 / 读档：比赛记录可能整批重建（id 会被复用），两个缓存都必须作废。
+        // 这一步放在 START_DONE 判断**之前** —— 同一个进程里换存档再进服时，
+        // 下面的初始化会被跳过，但缓存里的 Match id 已经属于上一份存档了。
+        played_cache_reset();
+        cache_clear();
         if START_DONE.swap(true, Ordering::SeqCst) {
             return;
         }
@@ -4263,6 +4577,9 @@ impl StableServerExtension for KplNaming {
     /// （CN 容器原始引用是 CompetitionRank），这里会立刻改回来，保证当天开打的
     /// 一定是我们的对阵。
     fn before_management_tick(&self, ctx: &mut StableServerCtx<'_>) {
+        // 每个 tick 重新开始，读取缓存从空开始。
+        cache_clear();
+        played_cache_age();
         // S/A/B 同级：每个 tick 都确认 A 组还是 div0（引擎若在赛季末 rebuild
         // 联赛时写回 div1，这里马上改回去，避免下一次升降级判定读到旧值）。
         enforce_same_tier(ctx);
@@ -4285,7 +4602,22 @@ impl StableServerExtension for KplNaming {
     fn after_management_tick(&self, ctx: &mut StableServerCtx<'_>) {
         let cursor = CURSOR.load(Ordering::SeqCst);
         let mut nc = cursor;
-        for ev in ctx.management_events_after(cursor) {
+        let mut need_rename = false;
+        // 这一批事件里只要出现过一场 MatchFinished / 一次 SeasonRollover，
+        // 「打完」缓存就必须整体作废。批内先全部丢掉、之后重新取——一次
+        // after_management_tick 里通常只有 0~2 个事件，代价可以忽略。
+        let events = ctx.management_events_after(cursor);
+        if events.iter().any(|ev| {
+            matches!(
+                ev.kind,
+                Some(ManagementEventKindV1::MatchFinished)
+                    | Some(ManagementEventKindV1::SeasonRollover)
+            )
+        }) {
+            played_cache_reset();
+        }
+        cache_clear();
+        for ev in events {
             nc = ev.seq;
             match &ev.kind {
                 Some(ManagementEventKindV1::SeasonRollover) => {
@@ -4322,11 +4654,14 @@ impl StableServerExtension for KplNaming {
                     maybe_restore_fillers(ctx);
                 }
                 // 转会完成后可能有新选手进入 CN 赛区，补一次中文名/查重。
-                Some(ManagementEventKindV1::TransferCompleted) => {
-                    rename_cn_all(ctx);
-                }
+                // 全量扫描很贵，而转会期里这个事件是成批来的：只记一笔，
+                // 等整批事件处理完再扫一次（见下面 need_rename）。
+                Some(ManagementEventKindV1::TransferCompleted) => need_rename = true,
                 _ => {}
             }
+        }
+        if need_rename {
+            rename_cn_all(ctx);
         }
         CURSOR.store(nc, Ordering::SeqCst);
     }
@@ -4343,7 +4678,7 @@ impl StableServerExtension for KplNaming {
 // 纯客户端只读：不写存档、不改比赛记录，因此不影响判定。
 
 use mod_api_stable::{ClientSceneKindV1, SceneKindV1, StableClient, StableExtension, UiEventKindV1};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 const PO_BTN_PATH: &str = "main.bottom.po_btn";
 const PO_UI_PATH: &str = "main.po_ui";
@@ -5224,5 +5559,125 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// 缓存层的纯逻辑不变量（不碰 host ctx，所以可以在这里直接跑）。
+    /// 这几条对应「性能优化不能改行为」的底线：写 -> 失效、tick 清理互不干扰、
+    /// 「打完」缓存的降级方向必须是「漏读成没打完」而不是反的。
+    #[test]
+    fn cache_invariants() {
+        // tick 缓存：写 Match 相关字段后对应条目必须消失。
+        cache_clear();
+        {
+            let mut c = lock_tick();
+            c.running.insert(7, Some("{\"End\":{}}".into()));
+            c.match_side.insert((7, false), Some("{\"Normal\":1}".into()));
+            c.match_side.insert((7, true), Some("{\"Normal\":2}".into()));
+            c.match_date.insert(7, "2026-03-03T19:00:00".into());
+            c.team_name.insert(11, "成都AG超玩会".into());
+            c.comp_mids.insert(3, Some(vec![1, 2]));
+            c.cn_comps.insert(false, vec![3]);
+            c.sab = Some(None);
+            c.real_teams = Some(vec![11]);
+        }
+        cache_invalidate(RecordKindV1::Match, 7);
+        {
+            let c = lock_tick();
+            assert!(c.running.get(&7).is_none(), "running 未失效");
+            assert!(c.match_side.get(&(7, false)).is_none(), "team1 未失效");
+            assert!(c.match_side.get(&(7, true)).is_none(), "team2 未失效");
+            assert!(c.match_date.get(&7).is_none(), "date 未失效");
+            // 别的记录不受影响
+            assert_eq!(c.team_name.get(&11).map(String::as_str), Some("成都AG超玩会"));
+        }
+
+        // 写 Team：队名/联赛/真队集合失效，容器派生结果不受牵连。
+        cache_invalidate(RecordKindV1::Team, 11);
+        {
+            let c = lock_tick();
+            assert!(c.team_name.get(&11).is_none());
+            assert!(c.real_teams.is_none());
+            assert_eq!(c.comp_mids.get(&3), Some(&Some(vec![1, 2])));
+        }
+
+        // 写 LeagueCompetition：容器缓存 + 派生集合全部失效。
+        cache_clear();
+        {
+            let mut c = lock_tick();
+            c.comp_mids.insert(3, Some(vec![1, 2]));
+            c.cn_comps.insert(false, vec![3]);
+            c.sab = Some(Some(SabComps { s: 1, a: 2, b: 3 }));
+        }
+        cache_invalidate(RecordKindV1::LeagueCompetition, 3);
+        {
+            let c = lock_tick();
+            assert!(c.comp_mids.get(&3).is_none());
+            assert!(c.cn_comps.is_empty());
+            assert!(c.sab.is_none());
+        }
+
+        // cache_clear 只清 tick 缓存，「打完」缓存跨 tick 保留（这正是收益来源）。
+        played_cache_reset();
+        lock_played().done.insert(7);
+        cache_clear();
+        assert!(
+            lock_played().done.contains(&7),
+            "cache_clear 不应清掉跨 tick 的「打完」缓存"
+        );
+
+        // 写 Match 记录同时让「打完」缓存里的这一场失效（卡位赛会复用 Match）。
+        cache_invalidate(RecordKindV1::Match, 7);
+        assert!(!lock_played().done.contains(&7));
+
+        // 保底清空：到周期就清掉（只会多读几次，不会误判）。
+        played_cache_reset();
+        lock_played().done.insert(7);
+        for _ in 0..PLAYED_CACHE_MAX_TICKS {
+            played_cache_age();
+        }
+        assert!(lock_played().done.is_empty(), "到达保底周期后应清空");
+
+        // 收尾，别把状态漏给别的测试。
+        played_cache_reset();
+        cache_clear();
+    }
+
+    /// 两把缓存锁的加锁顺序必须是「先 tick 后 played」，否则和写路径构成环。
+    /// 这里用真实线程并发地读写，跑不出死锁即通过（超时由测试框架兜底）。
+    #[test]
+    fn cache_locks_do_not_deadlock() {
+        played_cache_reset();
+        cache_clear();
+        let mut hs = Vec::new();
+        for t in 0..4usize {
+            hs.push(std::thread::spawn(move || {
+                for i in 0..2000usize {
+                    let mid = (t * 7 + i) % 50;
+                    // 模拟读路径：played → （放开）→ tick → （放开）→ played
+                    if !lock_played().done.contains(&mid) {
+                        let raw = lock_tick().running.get(&mid).cloned();
+                        let played = raw
+                            .flatten()
+                            .map(|s| s.contains("End"))
+                            .unwrap_or(false);
+                        if played {
+                            lock_played().done.insert(mid);
+                        }
+                    }
+                    // 模拟写路径：先 tick（内部作用域）再 played
+                    cache_invalidate(RecordKindV1::Match, mid);
+                    // 模拟 tick 边界
+                    if i % 64 == 0 {
+                        cache_clear();
+                        played_cache_age();
+                    }
+                }
+            }));
+        }
+        for h in hs {
+            h.join().expect("缓存锁测试线程 panic");
+        }
+        played_cache_reset();
+        cache_clear();
     }
 }
