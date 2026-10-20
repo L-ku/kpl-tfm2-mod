@@ -1,4 +1,27 @@
 {
+  "ko": {
+    "league": {
+      "tacc": "KPL S조",
+      "tacc2": "KPL A조",
+      "tacj": "KPL B조",
+      "tacj2": "KGL",
+      "kplg1": "KPL 1조",
+      "kplg2": "KPL 2조",
+      "kplg3": "KPL 3조"
+    },
+    "competition_name": {
+      "league_spring_playoff": "KPL 플레이오프",
+      "league_summer_playoff": "KPL 플레이오프"
+    },
+    "region": [
+      "한국",
+      "CN1",
+      "유럽",
+      "북미",
+      "남미",
+      "CN2"
+    ]
+  },
   "en": {
     "league": {
       "tacc": "KPL S",
@@ -25,6 +48,236 @@
       "Europe",
       "North America",
       "South America",
+      "CN2"
+    ]
+  },
+  "ja": {
+    "league": {
+      "tacc": "KPL S組",
+      "tacc2": "KPL A組",
+      "tacj": "KPL B組",
+      "tacj2": "KGL",
+      "kplg1": "KPL グループ1",
+      "kplg2": "KPL グループ2",
+      "kplg3": "KPL グループ3"
+    },
+    "competition_name": {
+      "league_spring_playoff": "KPL プレーオフ",
+      "league_summer_playoff": "KPL プレーオフ"
+    },
+    "region": [
+      "韓国",
+      "CN1",
+      "欧州",
+      "北米",
+      "南米",
+      "CN2"
+    ]
+  },
+  "de": {
+    "league": {
+      "tacc": "KPL S",
+      "tacc2": "KPL A",
+      "tacj": "KPL B",
+      "tacj2": "KGL",
+      "kplg1": "KPL Gruppe 1",
+      "kplg2": "KPL Gruppe 2",
+      "kplg3": "KPL Gruppe 3"
+    },
+    "competition_name": {
+      "league_spring_playoff": "KPL Playoffs",
+      "league_summer_playoff": "KPL Playoffs"
+    },
+    "region": [
+      "Südkorea",
+      "CN1",
+      "Europa",
+      "Nordamerika",
+      "Südamerika",
+      "CN2"
+    ]
+  },
+  "vi": {
+    "league": {
+      "tacc": "KPL S",
+      "tacc2": "KPL A",
+      "tacj": "KPL B",
+      "tacj2": "KGL",
+      "kplg1": "KPL Bảng 1",
+      "kplg2": "KPL Bảng 2",
+      "kplg3": "KPL Bảng 3"
+    },
+    "competition_name": {
+      "league_spring_playoff": "KPL Playoff",
+      "league_summer_playoff": "KPL Playoff"
+    },
+    "region": [
+      "Hàn Quốc",
+      "CN1",
+      "Châu Âu",
+      "Bắc Mỹ",
+      "Nam Mỹ",
+      "CN2"
+    ]
+  },
+  "pt-BR": {
+    "league": {
+      "tacc": "KPL S",
+      "tacc2": "KPL A",
+      "tacj": "KPL B",
+      "tacj2": "KGL",
+      "kplg1": "KPL Grupo 1",
+      "kplg2": "KPL Grupo 2",
+      "kplg3": "KPL Grupo 3"
+    },
+    "competition_name": {
+      "league_spring_playoff": "KPL Playoffs",
+      "league_summer_playoff": "KPL Playoffs"
+    },
+    "region": [
+      "Coreia",
+      "CN1",
+      "Europa",
+      "América do Norte",
+      "América do Sul",
+      "CN2"
+    ]
+  },
+  "tr": {
+    "league": {
+      "tacc": "KPL S",
+      "tacc2": "KPL A",
+      "tacj": "KPL B",
+      "tacj2": "KGL",
+      "kplg1": "KPL Grup 1",
+      "kplg2": "KPL Grup 2",
+      "kplg3": "KPL Grup 3"
+    },
+    "competition_name": {
+      "league_spring_playoff": "KPL Play-off",
+      "league_summer_playoff": "KPL Play-off"
+    },
+    "region": [
+      "Kore",
+      "CN1",
+      "Avrupa",
+      "Kuzey Amerika",
+      "Güney Amerika",
+      "CN2"
+    ]
+  },
+  "nl": {
+    "league": {
+      "tacc": "KPL S",
+      "tacc2": "KPL A",
+      "tacj": "KPL B",
+      "tacj2": "KGL",
+      "kplg1": "KPL Groep 1",
+      "kplg2": "KPL Groep 2",
+      "kplg3": "KPL Groep 3"
+    },
+    "competition_name": {
+      "league_spring_playoff": "KPL Play-offs",
+      "league_summer_playoff": "KPL Play-offs"
+    },
+    "region": [
+      "Zuid-Korea",
+      "CN1",
+      "Europa",
+      "Noord-Amerika",
+      "Zuid-Amerika",
+      "CN2"
+    ]
+  },
+  "ru": {
+    "league": {
+      "tacc": "KPL S",
+      "tacc2": "KPL A",
+      "tacj": "KPL B",
+      "tacj2": "KGL",
+      "kplg1": "KPL, группа 1",
+      "kplg2": "KPL, группа 2",
+      "kplg3": "KPL, группа 3"
+    },
+    "competition_name": {
+      "league_spring_playoff": "KPL плей-офф",
+      "league_summer_playoff": "KPL плей-офф"
+    },
+    "region": [
+      "Корея",
+      "CN1",
+      "Европа",
+      "Северная Америка",
+      "Южная Америка",
+      "CN2"
+    ]
+  },
+  "es-ES": {
+    "league": {
+      "tacc": "KPL S",
+      "tacc2": "KPL A",
+      "tacj": "KPL B",
+      "tacj2": "KGL",
+      "kplg1": "KPL Grupo 1",
+      "kplg2": "KPL Grupo 2",
+      "kplg3": "KPL Grupo 3"
+    },
+    "competition_name": {
+      "league_spring_playoff": "KPL Play-offs",
+      "league_summer_playoff": "KPL Play-offs"
+    },
+    "region": [
+      "Corea del Sur",
+      "CN1",
+      "Europa",
+      "Norteamérica",
+      "Sudamérica",
+      "CN2"
+    ]
+  },
+  "fr": {
+    "league": {
+      "tacc": "KPL S",
+      "tacc2": "KPL A",
+      "tacj": "KPL B",
+      "tacj2": "KGL",
+      "kplg1": "KPL Groupe 1",
+      "kplg2": "KPL Groupe 2",
+      "kplg3": "KPL Groupe 3"
+    },
+    "competition_name": {
+      "league_spring_playoff": "KPL Play-offs",
+      "league_summer_playoff": "KPL Play-offs"
+    },
+    "region": [
+      "Corée",
+      "CN1",
+      "Région Europe",
+      "Amérique du Nord",
+      "Amérique du Sud",
+      "CN2"
+    ]
+  },
+  "it": {
+    "league": {
+      "tacc": "KPL S",
+      "tacc2": "KPL A",
+      "tacj": "KPL B",
+      "tacj2": "KGL",
+      "kplg1": "KPL Gruppo 1",
+      "kplg2": "KPL Gruppo 2",
+      "kplg3": "KPL Gruppo 3"
+    },
+    "competition_name": {
+      "league_spring_playoff": "KPL Playoff",
+      "league_summer_playoff": "KPL Playoff"
+    },
+    "region": [
+      "Corea",
+      "CN1",
+      "Europa",
+      "Nord America",
+      "Sud America",
       "CN2"
     ]
   },
@@ -83,6 +336,75 @@
       "歐洲",
       "北美",
       "南美",
+      "CN2"
+    ]
+  },
+  "pl": {
+    "league": {
+      "tacc": "KPL S",
+      "tacc2": "KPL A",
+      "tacj": "KPL B",
+      "tacj2": "KGL",
+      "kplg1": "KPL Grupa 1",
+      "kplg2": "KPL Grupa 2",
+      "kplg3": "KPL Grupa 3"
+    },
+    "competition_name": {
+      "league_spring_playoff": "KPL Playoffs",
+      "league_summer_playoff": "KPL Playoffs"
+    },
+    "region": [
+      "Korea",
+      "CN1",
+      "Europa",
+      "Ameryka Płn.",
+      "Ameryka Płd.",
+      "CN2"
+    ]
+  },
+  "th": {
+    "league": {
+      "tacc": "KPL S",
+      "tacc2": "KPL A",
+      "tacj": "KPL B",
+      "tacj2": "KGL",
+      "kplg1": "KPL กลุ่ม 1",
+      "kplg2": "KPL กลุ่ม 2",
+      "kplg3": "KPL กลุ่ม 3"
+    },
+    "competition_name": {
+      "league_spring_playoff": "KPL เพลย์ออฟ",
+      "league_summer_playoff": "KPL เพลย์ออฟ"
+    },
+    "region": [
+      "เกาหลี",
+      "CN1",
+      "ยุโรป",
+      "อเมริกาเหนือ",
+      "อเมริกาใต้",
+      "CN2"
+    ]
+  },
+  "haw": {
+    "league": {
+      "tacc": "KPL S",
+      "tacc2": "KPL A",
+      "tacj": "KPL B",
+      "tacj2": "KGL",
+      "kplg1": "KPL 1",
+      "kplg2": "KPL 2",
+      "kplg3": "KPL 3"
+    },
+    "competition_name": {
+      "league_spring_playoff": "KPL Playoffs",
+      "league_summer_playoff": "KPL Playoffs"
+    },
+    "region": [
+      "Kōlea",
+      "CN1",
+      "ʻEulopa",
+      "ʻAmelika ʻĀkau",
+      "ʻAmelika Hema",
       "CN2"
     ]
   }
