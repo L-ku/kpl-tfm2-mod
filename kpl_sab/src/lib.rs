@@ -178,7 +178,7 @@ fn roster_for(team: &str) -> Option<[&'static [P]; 5]> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum Lane {
     Top,
     Jungle,
@@ -272,15 +272,108 @@ fn set_potential(ctx: &mut StableServerCtx<'_>, id: usize, pot: i64) {
     ctx.athlete_set_i64(id, "hidden.potential", pot);
 }
 
-/// 把主分路能力设成 `ovr`，其余 11 项风格值按分路模板等比缩放。
+/// 按分路模板算 12 项风格值，使游戏内 OVR 正好等于 `ovr`，同时保留分路特征。
+///
+/// 引擎的 OVR 定义（`athlete.i18n` 的 `stat.description.overall`）是「本模式用到的
+/// 技能项平均值」，实测 = **(11 项风格值 + 主分路能力) ÷ 12**。
+/// `ego` 不在其中（`stat.description.ego` 写明它不影响比赛、只影响 Squad Messenger），
+/// 用户实测验证：大帅 91 分、写入的 11 项为 51/85/74/68/93/57/93/100/85/85/93/68 时，
+/// 详情页显示 81 = (11 项之和 884 + 主分路 91) ÷ 12 —— 正好排除 ego。
+///
+/// 旧写法 `base * ovr / 80` 只在模板均值恰好 80 时成立，而五套模板的均值是 70.1-75.0，
+/// 所以 91 分的游走写进去 11 项均值只有 79.3 → 详情页 81，比名单评分低 10 分；
+/// 而且五个位置偏得不一样（对抗路/游走最亏），球员排序都会变。
+///
+/// 做法：以「模板值 − 11 项均值」为分路形状，整体平移到 ovr 上。高分选手
+/// （比如 91 分的游走）如果整段平移会有多项撞到 100 上限、形状被压平，所以先
+/// 按上下限反解一个收缩系数 `a`（尽量接近 1 = 尽量保留起伏），再补四舍五入零头。
+/// 这样「指挥/判断/精神力高、单位击杀/侵略性低」的分路特征始终成立。
+fn style_values(lane: Lane, ovr: i64) -> [(&'static str, i64); 12] {
+    let base = lane.style();
+    let mut out = base;
+    let main: Vec<usize> = (0..base.len()).filter(|&i| base[i].0 != "ego").collect();
+    let mean = main.iter().map(|&i| base[i].1 as f64).sum::<f64>() / main.len() as f64;
+    let hi = main
+        .iter()
+        .map(|&i| base[i].1 as f64 - mean)
+        .fold(f64::MIN, f64::max);
+    let lo = main
+        .iter()
+        .map(|&i| base[i].1 as f64 - mean)
+        .fold(f64::MAX, f64::min);
+    let o = ovr as f64;
+    let mut a = 1.0f64; // 收缩系数：保证最靠外的项不越过 0/100
+    if hi > 0.0 {
+        a = a.min((100.0 - o) / hi);
+    }
+    if lo < 0.0 {
+        a = a.min(o / -lo);
+    }
+    a = a.max(0.0);
+    for i in 0..base.len() {
+        out[i].1 = ((o + a * (base[i].1 as f64 - mean)).round() as i64).clamp(0, 100);
+    }
+    // 补齐四舍五入 / 截断的零头：11 项之和必须等于 12×ovr − 主分路(=ovr)。
+    // 优先动最靠近中心（离 ovr 最近）的项，形状几乎不受影响。
+    let target = ovr * 12 - ovr;
+    let mut sum: i64 = main.iter().map(|&i| out[i].1).sum();
+    let mut order = main.clone();
+    let mut guard = 0;
+    while sum != target && guard < 4096 {
+        guard += 1;
+        let up = sum < target;
+        order.sort_by_key(|&i| (out[i].1 - ovr).abs());
+        let mut moved = false;
+        for &i in &order {
+            if sum == target {
+                break;
+            }
+            let nv = out[i].1 + if up { 1 } else { -1 };
+            // 不要为了凑数造出越界或把形状弄反
+            if (0..=100).contains(&nv) {
+                out[i].1 = nv;
+                sum += if up { 1 } else { -1 };
+                moved = true;
+            }
+        }
+        if !moved {
+            break;
+        }
+    }
+    out
+}
+
+/// 把主分路能力设成 `ovr`，其余风格值由 [`style_values`] 给出。
 /// `initial_stat.*` 也一起写，否则游戏里「当前」和「初始」会不一致。
 fn set_stats(ctx: &mut StableServerCtx<'_>, id: usize, ovr: i64, lane: Lane) {
-    let scale = ovr as f64 / 80.0;
     ctx.athlete_set_i64(id, lane.stat_path(), ovr);
     let field = lane.stat_path().split('.').nth(1).unwrap();
     ctx.athlete_set_i64(id, &format!("initial_stat.{}", field), ovr);
-    for (field, base) in lane.style() {
-        let v = ((base as f64 * scale).round() as i64).clamp(0, 100);
+    for (field, v) in style_values(lane, ovr) {
+        ctx.athlete_set_i64(id, &format!("stat.{}", field), v);
+        ctx.athlete_set_i64(id, &format!("initial_stat.{}", field), v);
+    }
+}
+
+/// 五条分路 + 12 项风格值整块重写：主分路 = `ovr`，其余四条分路压到 `ovr-12`
+/// （保证主位置 = 名单位置），风格值让详情页 OVR 正好等于 `ovr`。
+fn write_role_stats(ctx: &mut StableServerCtx<'_>, id: usize, ovr: i64, li: usize) {
+    let off = (ovr - 12).clamp(30, 90);
+    let paths = [
+        "stat.top",
+        "stat.jungle",
+        "stat.mid",
+        "stat.bottom",
+        "stat.support",
+    ];
+    for (k, p) in paths.iter().enumerate() {
+        let cur = ctx.athlete_get_i64(id, p).unwrap_or(0);
+        let v = if k == li { ovr } else { cur.min(off) };
+        ctx.athlete_set_i64(id, p, v);
+        let field = p.split('.').nth(1).unwrap();
+        ctx.athlete_set_i64(id, &format!("initial_stat.{}", field), v);
+    }
+    for (field, v) in style_values(Lane::from_usize(li), ovr) {
         ctx.athlete_set_i64(id, &format!("stat.{}", field), v);
         ctx.athlete_set_i64(id, &format!("initial_stat.{}", field), v);
     }
@@ -402,17 +495,10 @@ fn rename_china(ctx: &mut StableServerCtx<'_>) {
 /// 另一条分路更高，argmax 仍指向旧位置 → 名字和主要位置对不上（用户实测）。
 /// 这里把目标分路 = 评分，其余四条压到评分以下，保证 argmax 一定对。
 fn fix_roles(ctx: &mut StableServerCtx<'_>) {
-    if ctx.save_get_string("rolefix_done_v2").as_deref() == Some("1") {
+    if ctx.save_get_string("rolefix_done_v3").as_deref() == Some("1") {
         return;
     }
-    ctx.save_set_string("rolefix_done_v2", "1");
-    let paths = [
-        "stat.top",
-        "stat.jungle",
-        "stat.mid",
-        "stat.bottom",
-        "stat.support",
-    ];
+    ctx.save_set_string("rolefix_done_v3", "1");
     for id in ctx.record_ids(RecordKindV1::Athlete) {
         let Some(name) = ctx.record_get_string(RecordKindV1::Athlete, id, "name") else {
             continue;
@@ -421,21 +507,9 @@ fn fix_roles(ctx: &mut StableServerCtx<'_>) {
         let Some((li, ovr)) = roster_lane_of(&team, &name) else {
             continue;
         };
-        let off = (ovr - 12).clamp(30, 90);
-        for (k, p) in paths.iter().enumerate() {
-            let cur = ctx.athlete_get_i64(id, p).unwrap_or(0);
-            let v = if k == li { ovr } else { cur.min(off) };
-            ctx.athlete_set_i64(id, p, v);
-            let field = p.split('.').nth(1).unwrap();
-            ctx.athlete_set_i64(id, &format!("initial_stat.{}", field), v);
-        }
-        // 风格值也按分路统一，保证游戏内定位与名字一致。
-        let scale = ovr as f64 / 80.0;
-        for (field, base) in Lane::from_usize(li).style() {
-            let v = ((base as f64 * scale).round() as i64).clamp(0, 100);
-            ctx.athlete_set_i64(id, &format!("stat.{}", field), v);
-            ctx.athlete_set_i64(id, &format!("initial_stat.{}", field), v);
-        }
+        // 五条分路 + 12 项风格值整块按「名单分路」重写（v3：风格值改为
+        // 以该分路模板为形状、均值 = ovr 的排布，详情页 OVR 才会等于名单评分）。
+        write_role_stats(ctx, id, ovr, li);
     }
 }
 
@@ -540,8 +614,16 @@ fn make_trainee(ctx: &mut StableServerCtx<'_>, id: usize) {
     let age = 18 + pick(6, 3); // 18-23
     ctx.athlete_set_i64(id, "age", age);
     set_potential(ctx, id, pot);
-    let lane = lane_of(ctx, id);
-    set_stats(ctx, id, ovr, lane);
+    // 青训保留引擎随机到的分路；五条分路 + 风格值整体按该分路重写，
+    // 详情页 OVR 才会等于这里的 ovr（其余四条分路压到 ovr-12）。
+    let li = match lane_of(ctx, id) {
+        Lane::Top => 0,
+        Lane::Jungle => 1,
+        Lane::Mid => 2,
+        Lane::Bottom => 3,
+        Lane::Support => 4,
+    };
+    write_role_stats(ctx, id, ovr, li);
 }
 
 /// v4：中国赛区（region 1/5）里所有还没换成中文名的选手——K 甲、青训队、
@@ -5093,6 +5175,52 @@ mod tests {
                         "{t}/{name}: potential {pot} below overall {ovr}"
                     );
                     assert!(pot <= 99, "{t}/{name}: potential {pot} > 99");
+                }
+            }
+        }
+    }
+
+    /// 详情页 OVR = (除 ego 外的 11 项风格值 + 主分路) ÷ 12（大帅 81 实测反推）。
+    /// 这条测试保证 `style_values` 写出来的数在每个分路、每个评分档位都对得上。
+    #[test]
+    fn style_values_reproduce_ovr() {
+        for lane in [
+            Lane::Top,
+            Lane::Jungle,
+            Lane::Mid,
+            Lane::Bottom,
+            Lane::Support,
+        ] {
+            for ovr in [40i64, 50, 62, 68, 70, 75, 80, 85, 88, 91, 92, 93, 95, 99] {
+                let saturated = ovr >= 94;
+                let v = style_values(lane, ovr);
+                for &(_n, x) in v.iter() {
+                    assert!((0..=100).contains(&x), "{lane:?} {ovr}: stat {x} out of 0..=100");
+                }
+                let sum: i64 = v
+                    .iter()
+                    .filter(|(n, _)| *n != "ego")
+                    .map(|(_, x)| *x)
+                    .sum::<i64>()
+                    + ovr;
+                assert_eq!(
+                    sum % 12,
+                    0,
+                    "{lane:?} ovr {ovr}: sum {sum} not divisible by 12 -> {}",
+                    sum as f64 / 12.0
+                );
+                assert_eq!(sum / 12, ovr, "{lane:?}: OVR would be {}", sum / 12);
+                // 分路形状必须保留：本位置最看重的项不能低于它最不看重的项。
+                // 94 分以上整片项都撞 100 上限，形状必然被压平，跳过。
+                if !saturated {
+                    let by = |name: &str| v.iter().find(|(n, _)| *n == name).unwrap().1;
+                    match lane {
+                        Lane::Top => assert!(by("judgement") > by("roaming")),
+                        Lane::Jungle => assert!(by("roaming") > by("order")),
+                        Lane::Mid => assert!(by("skill_hit") > by("order")),
+                        Lane::Bottom => assert!(by("last_hit") > by("roaming")),
+                        Lane::Support => assert!(by("order") > by("last_hit")),
+                    }
                 }
             }
         }
