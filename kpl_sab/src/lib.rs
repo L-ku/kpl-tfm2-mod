@@ -1529,10 +1529,10 @@ mod seedscan {
         }
     }
 
-    pub fn rdu32(addr: usize) -> Option<u32> {
-        let mut b = [0u8; 4];
+    pub fn rdu8(addr: usize) -> Option<u8> {
+        let mut b = [0u8; 1];
         if rpm(addr, &mut b) {
-            Some(u32::from_le_bytes(b))
+            Some(b[0])
         } else {
             None
         }
@@ -1541,60 +1541,137 @@ mod seedscan {
 }
 
 // ============================ 国际杯种子表修正 ============================
-// 5/4 国际杯抽签崩在 tournament.rs:1494（种子池最后一个 pot 只有 2 队，
-// 回溯分配器仍按 4 个槽位写下标 → 越界）。种子分配表在 world 里，稳定 SDK
-// 不暴露，只能从 host state 指针直接读/改（全部走 ReadProcessMemory，失败不抛异常）。
-// WORLD_ADDR 缓存找到的 world 地址，避免每个 tick 重新扫描。
+// 5/4 国际杯抽签崩在 tournament.rs（种子池最后一个 pot 只有 2 队，回溯分配器
+// 仍按 4 个槽位写下标 → 越界）。种子分配表在 world 里，稳定 SDK 不暴露，只能
+// 从 host state 指针直接读/改（全部走 ReadProcessMemory，失败不抛异常）。
+//
+// ⚠️ 2026-10-25 崩溃复发（0.6.5 用户 + 本机 10-21 更新到 build 26099334）。
+// 两个独立的原因，都已修：
+//
+// ① **B 组 playoff 槽补得太晚**（0.6.5 上就是这个，与版本无关，是主因）：
+//    `maybe_playoffs` 之前在同一次调用里「先把 B 的 playoffs 清空 → 16 场打完
+//    就强制 finalize A/B」，而补槽的 `maybe_fill_b_playoffs` 依赖 `sab_comps`
+//    （只看**未 finalize** 的容器）—— B 一旦被标成 finalized 就再也补不上。
+//    结果 B 组带着空 playoffs 去算名次，1-6 名全取不到 ⇒ CN/TACJ 赛区在东区
+//    申请的 4 个名额里有 2 个被静默跳过 ⇒ 池子 14 队 ⇒ 最后一个 pot 只有 2 队
+//    ⇒ panic。修法：finalize 之前先补槽（`maybe_playoffs` 内），并把
+//    `maybe_fill_b_playoffs` 的入口改成 `sab_comps().or_else(sab_comps_all)`。
+//
+// ② **world 偏移会随版本挪**：旧版按 `world+0x17a40` 取「当前年份」再筛条目，
+//    而抽签函数里这个读取点在新版变成了 `mov ecx,[rax+0x18010]` —— 读错位置
+//    ⇒ 年份永远匹配不上 ⇒ 整段静默跳过，cap 归一生效不了，同样崩。
+//    0.6.5 上更早就这样：旧 `find_world` 用 0x16938/0x17478/0x173e8 做形状校验，
+//    版本一对不上就返回 None。修法：**年份改从条目内部取（+0x48，结构体自身
+//    布局，不随 world 挪动）**，取全表最大值当当前赛季；`find_world` 换成一个
+//    只在固定偏移上做的**结构校验**（`seed_table_ok`），不做宽范围扫描 ——
+//    误判会往野内存写数据，那比不修更糟。
 static WORLD_ADDR: AtomicUsize = AtomicUsize::new(0);
 
-/// 判断 w+base 处是不是一个可读的 hashbrown 头（ctrl/mask/items）。
-fn map_header_ok(w: usize, base: usize, items_off: usize) -> bool {
-    let (Some(ctrl), Some(mask), Some(items)) = (
-        seedscan::rdu64(w + base),
-        seedscan::rdu64(w + base + 8),
-        seedscan::rdu64(w + base + items_off),
-    ) else {
-        return false;
-    };
-    if ctrl < 0x10000 || mask >= 4096 || !(mask + 1).is_power_of_two() || items > mask + 1 {
-        return false;
+/// 定位尝试计数（找不到就退避，避免每个 tick 白扫 130 个候选）。
+static SEED_TRIES: AtomicUsize = AtomicUsize::new(0);
+
+const SEED_OFF_HINT: usize = 0x169a8;
+/// 一条 `InternationalSeedAllocation`：三个 `Vec<SeedSlotEntry>` + 年份 + 类型。
+const SEED_ENTRY_SIZE: usize = 0x58;
+/// 一条 `SeedSlotEntry`（`{league/region id, count, ..}`）。
+const SEED_SLOT_SIZE: usize = 0x18;
+
+/// 一组槽位（`Vec<SeedSlotEntry>`）里「申请了队伍」的赛区数；结构不合法返回 None。
+///
+/// 只看结构不看具体数字 —— 数字各版本/各年份都不同，但「联赛/赛区 id 很小、
+/// 每个赛区申请的队数 ≤ 16」恒定成立。
+fn seed_slots_live(ptr: u64, len: u64) -> Option<u32> {
+    if len > 32 || (len > 0 && ptr < 0x10000) {
+        return None;
     }
-    let mut probe = [0u8; 16];
-    seedscan::rpm(ctrl as usize, &mut probe)
+    let mut live = 0u32;
+    for k in 0..len as usize {
+        let a = ptr as usize + k * SEED_SLOT_SIZE;
+        let (Some(r), Some(c)) = (seedscan::rdu64(a), seedscan::rdu64(a + 8)) else {
+            return None;
+        };
+        // 第一个字段是联赛/赛区 id：league 0..=11、region 0..=5 都落在这里。
+        if r > 15 || c > 16 {
+            return None;
+        }
+        if c > 0 {
+            live += 1;
+        }
+    }
+    Some(live)
 }
 
-/// 在 state 头部找 world：要求 region 集合、排名表、比赛表都是 hashbrown 形状。
-fn find_world(s: usize) -> Option<usize> {
+/// `w + off - 8` 处是不是一个 `Vec<InternationalSeedAllocation>`。
+///
+/// 返回其中「真的有队伍」的分配表条数；0 = 不像。
+///
+/// 因为只在这个**唯一偏移**上校验（不做宽扫），条件可以定得很严：长度合理、
+/// 每条记录的赛事类型 ≤ 3、三组槽位全部可读且字段在范围内，并且整体至少有
+/// 一条记录申请了队伍。随机内存几乎不可能同时满足。
+fn seed_table_ok(w: usize, off: usize) -> Option<usize> {
+    let (Some(cap), Some(ptr), Some(len)) = (
+        seedscan::rdu64(w + off - 8),
+        seedscan::rdu64(w + off),
+        seedscan::rdu64(w + off + 8),
+    ) else {
+        return None;
+    };
+    if len == 0 || len > 64 || cap < len || ptr < 0x10000 {
+        return None;
+    }
+    let mut live = 0usize;
+    for e in 0..len as usize {
+        let b = ptr as usize + e * SEED_ENTRY_SIZE;
+        // +0x50 是赛事类型（单字节；引擎自己也是 `cmp byte ptr [..+0x50]`）：
+        // 0/1 = Masters/Champions、2 = 东区、3 = 西区。
+        let ty = seedscan::rdu8(b + 0x50)?;
+        if ty > 3 {
+            return None;
+        }
+        let mut slots_live = 0u32;
+        for (po, lo) in [(0x08usize, 0x10usize), (0x20, 0x28), (0x38, 0x40)] {
+            let (p, l) = (seedscan::rdu64(b + po)?, seedscan::rdu64(b + lo)?);
+            slots_live += seed_slots_live(p, l)?;
+        }
+        if slots_live > 0 {
+            live += 1;
+        }
+    }
+    (live > 0).then_some(live)
+}
+
+/// 找种子分配表：返回 `(world, 表在 world 里的偏移)`。
+///
+/// **只在已知偏移上做结构校验，不做宽范围扫描。** 这张表的位置在 0.6.x /
+/// 0.7.0_beta2 / build 26099334 三个版本上都是 0x169a8；如果将来真的挪走，
+/// 这里会返回 None（种子表修正失效），由 `maybe_playoffs` 里的 B 组季后赛兜底
+/// 保证抽签池不缺队 —— 宁可不修，也不能往野内存写数据把游戏写崩。
+fn locate_seed_table(s: usize) -> Option<(usize, usize)> {
     if s < 0x10000 {
+        return None;
+    }
+    let cached_w = WORLD_ADDR.load(Ordering::Relaxed);
+    if cached_w != 0 && seed_table_ok(cached_w, SEED_OFF_HINT).is_some() {
+        return Some((cached_w, SEED_OFF_HINT));
+    }
+    // 找不到就退避：前 4 次照找（进服时状态还没铺开，早失败很正常），
+    // 之后每 64 次才重试，避免每个 tick 白扫 130 个候选。
+    let n = SEED_TRIES.fetch_add(1, Ordering::Relaxed);
+    if n >= 4 && n % 64 != 0 {
         return None;
     }
     let mut cands: Vec<usize> = vec![s];
     for off in (0..0x400).step_by(8) {
         if let Some(v) = seedscan::rdu64(s + off) {
-            if v > 0x10000 && v % 8 == 0 {
+            if v > 0x10000 && v % 8 == 0 && v as usize != s {
                 cands.push(v as usize);
             }
         }
     }
     for &w in cands.iter().take(130) {
-        let (Some(ctrl), Some(mask), Some(items)) = (
-            seedscan::rdu64(w + 0x16938),
-            seedscan::rdu64(w + 0x16940),
-            seedscan::rdu64(w + 0x16950),
-        ) else {
-            continue;
-        };
-        if ctrl > 0x10000
-            && mask < 4096
-            && (mask + 1).is_power_of_two()
-            && items <= mask + 1
-            && map_header_ok(w, 0x17478, 0x18)
-            && map_header_ok(w, 0x173e8, 0x18)
-        {
-            let mut probe = [0u8; 16];
-            if seedscan::rpm(ctrl as usize, &mut probe) {
-                return Some(w);
-            }
+        if seed_table_ok(w, SEED_OFF_HINT).is_some() {
+            WORLD_ADDR.store(w, Ordering::Relaxed);
+            return Some((w, SEED_OFF_HINT));
         }
     }
     None
@@ -1615,34 +1692,44 @@ fn find_world(s: usize) -> Option<usize> {
 ///   - vec2（Challengers W，region 2/3/4）：只处理 region 5（正常不会出现）。
 /// 每个赛区最多取 10 名（comp 0/1/2/3/4 的 1..10 名都实测可取）。
 fn maybe_fix_cup_allocation(ctx: &StableServerCtx<'_>) {
-    let w = match WORLD_ADDR.load(Ordering::Relaxed) {
-        0 => match find_world(ctx.raw_state() as usize) {
-            Some(w) => {
-                WORLD_ADDR.store(w, Ordering::Relaxed);
-                w
-            }
-            None => return,
-        },
-        w => w,
+    let (w, off) = match locate_seed_table(ctx.raw_state() as usize) {
+        Some(v) => v,
+        None => return,
     };
-    let (Some(cap), Some(ptr), Some(len)) = (
-        seedscan::rdu64(w + 0x169a0),
-        seedscan::rdu64(w + 0x169a8),
-        seedscan::rdu64(w + 0x169b0),
+    let (Some(ptr), Some(len)) = (
+        seedscan::rdu64(w + off),
+        seedscan::rdu64(w + off + 8),
     ) else {
         return;
     };
-    if len == 0 || len > 64 || cap < len || ptr < 0x10000 {
+    if len == 0 || len > 64 || ptr < 0x10000 {
         return;
     }
-    // 只改当前年份、type=0 的那条分配表（和其它年份的条目区分开）。
-    let year = seedscan::rdu32(w + 0x17a40).map(|v| (v as i32) >> 13).unwrap_or(0) as u64;
+    // 只改「最新年份」的条目。
+    //
+    // 旧版读的是 world 里的「当前年份」字段（world+0x17a40），那个字段在
+    // 2026-10-21 的更新里挪到了 0x18010 —— 偏移一错，年份就永远匹配不上，
+    // 整段静默失效，抽签池随之退化并崩溃（这正是 0.6.5 / 新版上复发的根因）。
+    // 现在改成从**条目内部**取年份（+0x48，结构体自身布局，不随 world 挪动），
+    // 取全表最大值当「当前赛季」—— 语义和引擎一致，但不再依赖任何 world 偏移。
+    let mut newest = 0u64;
     for e in 0..len as usize {
-        let base = ptr as usize + e * 0x58;
-        if seedscan::rdu64(base + 0x48).unwrap_or(u64::MAX) != year {
+        let base = ptr as usize + e * SEED_ENTRY_SIZE;
+        if let Some(y) = seedscan::rdu64(base + 0x48) {
+            // 年份是打包的（引擎自己 `sar 0xd`），这里只比大小，不解释具体值。
+            newest = newest.max(y);
+        }
+    }
+    for e in 0..len as usize {
+        let base = ptr as usize + e * SEED_ENTRY_SIZE;
+        if seedscan::rdu64(base + 0x48) != Some(newest) {
             continue;
         }
-        if seedscan::rdu64(base + 0x50).unwrap_or(u64::MAX) != 0 {
+        // +0x50 是赛事类型（单字节）；0/1=Masters/Champions、2=东区、3=西区。
+        let Some(ty) = seedscan::rdu8(base + 0x50) else {
+            continue;
+        };
+        if ty > 3 {
             continue;
         }
         for (vi, (poff, loff)) in [(0x08usize, 0x10usize), (0x20, 0x28), (0x38, 0x40)]
@@ -1661,7 +1748,7 @@ fn maybe_fix_cup_allocation(ctx: &StableServerCtx<'_>) {
             // 引擎分组约束（0x1416dc3f7 起的重排循环）：抽签按种子表顺序每 4 队切
             // 一组，并记录「组内位置 → 联赛」出现次数，要求次数 < 阈值，否则重排
             // （最多 10000 次）后退化成不完整的小组，抽签函数随后 panic
-            // （tournament.rs:2277 的 len 2 index 2 就是这么来的）。
+            // （tournament.rs 的 len 2 index 2 就是这么来的）。
             // 阈值 [rbp+0x510]：Challengers=2、Masters/Champions=1。
             // 一轮抽签里每个联赛最多占满「阈值」个完整小组：
             //   vec0（Masters/Champions）：4 队/赛区
@@ -1678,7 +1765,7 @@ fn maybe_fix_cup_allocation(ctx: &StableServerCtx<'_>) {
             let mut total = 0u64;
             let mut kept = 0u64;
             for k in 0..vlen as usize {
-                let ea = vptr as usize + k * 0x18;
+                let ea = vptr as usize + k * SEED_SLOT_SIZE;
                 let (Some(r), Some(c)) =
                     (seedscan::rdu64(ea), seedscan::rdu64(ea + 8))
                 else {
@@ -1702,11 +1789,11 @@ fn maybe_fix_cup_allocation(ctx: &StableServerCtx<'_>) {
                     break;
                 }
                 let Some(tk) = (0..vlen as usize).find(|&k| {
-                    seedscan::rdu64(vptr as usize + k * 0x18) == Some(gr)
+                    seedscan::rdu64(vptr as usize + k * SEED_SLOT_SIZE) == Some(gr)
                 }) else {
                     continue;
                 };
-                let ta = vptr as usize + tk * 0x18;
+                let ta = vptr as usize + tk * SEED_SLOT_SIZE;
                 let tc = seedscan::rdu64(ta + 8).unwrap_or(0);
                 let room = cap.saturating_sub(tc);
                 let add = room.min(left);
@@ -1811,7 +1898,7 @@ fn block_filler_transfers(ctx: &mut StableServerCtx<'_>) {
     let teams: Vec<usize> = ctx
         .record_ids(RecordKindV1::Team)
         .into_iter()
-        .filter(|&t| matches!(team_league(ctx, t), Some(1) | Some(5) | Some(7) | Some(11)))
+        .filter(|&t| is_filler_team(&team_name(ctx, t)))
         .collect();
     for t in teams {
         if !is_cn_filler(ctx, t) {
@@ -1829,12 +1916,29 @@ fn block_filler_transfers(ctx: &mut StableServerCtx<'_>) {
     }
 }
 
-/// CN 赛区的挂名队：名字不在 KPL 名单里、且属于 CN 的联赛（S/A/B = 1/7/5，青训 11）。
+/// CN 赛区的挂名队。
+///
+/// ⚠️ 判定必须是**白名单**（队名在 12 个挂名名单里），不能是「非真队即挂名」的
+/// 黑名单。0.7.0 起开档多了 `Expansion`（在二级联赛新建一支空阵容队），玩家
+/// 自己的新队既不在 18 真队里也不在 12 挂名里 —— 用黑名单会把它当成挂名队，害
+/// 它买不了人、还会被下面的 K甲 归位逻辑一脚踢下二级联赛。
+///
+/// 联赛 id 也不再硬编码：用名字查（`TACC/TACC2/TACJ` = S/A/B，`TACJ2` = K甲），
+/// 免得游戏内部记录顺序变化后整条判定失效。
 fn is_cn_filler(ctx: &StableServerCtx<'_>, t: usize) -> bool {
-    if is_real_kpl(&team_name(ctx, t)) {
+    if !is_filler_team(&team_name(ctx, t)) {
         return false;
     }
-    matches!(team_league(ctx, t), Some(1) | Some(5) | Some(7) | Some(11))
+    matches!(
+        comp_league_name_of_team(ctx, t).as_deref(),
+        Some("TACC") | Some("TACC2") | Some("TACJ") | Some("TACJ2")
+    )
+}
+
+/// 队伍所属联赛的**名字**（TACC / TACC2 / TACJ / TACJ2 / TACK …）。
+fn comp_league_name_of_team(ctx: &StableServerCtx<'_>, t: usize) -> Option<String> {
+    let lid = team_league(ctx, t)?;
+    ctx.record_get_string(RecordKindV1::League, lid, "name")
 }
 
 /// 一次性替换 JSON 对象里 `"<old>":` 的键（不会链式替换）。只替换深度 >= min_depth
@@ -2537,7 +2641,15 @@ fn maybe_playoffs(ctx: &mut StableServerCtx<'_>) {
     // 所以 S/A 两个容器各保持原生 8 个槽（一共 16 场）——这是 12:06 版实测跑通
     // 的结构。只在文本层把两个容器的季后赛都显示成「KPL 季后赛」。
     // B 组第二轮后全淘汰：它的 8 个季后赛槽清空，不再打自己的季后赛。
-    set_comp_playoffs(ctx, c.b, &[]);
+    //
+    // ⚠️ 但**淘汰赛全部打完之后必须把它补回 8 个已 End 的槽**（见下面
+    // `maybe_fill_b_playoffs` 的调用）：引擎 finalize 时按 playoffs 算 1-6 名，
+    // 空数组一个名次都算不出来 ⇒ CN/TACJ 在国际杯东区申请的 4 个名额里有 2 个
+    // 被静默跳过 ⇒ 池子 14 队 ⇒ 抽签兜底越界 panic。这里只在「季后赛还没打完」
+    // 的阶段清空，打完就交给补槽逻辑。
+    if !po_mids.iter().all(|m| is_played(ctx, *m)) {
+        set_comp_playoffs(ctx, c.b, &[]);
+    }
 
     let built_key = format!("po_built_{}", tag);
     let first = ctx.save_get_string(&built_key).is_none();
@@ -2569,6 +2681,14 @@ fn maybe_playoffs(ctx: &mut StableServerCtx<'_>) {
     // 16 场全部结束后 A/B 容器已经没有季后赛了，强制 finalize，
     // 否则赛季可能卡在「联赛未结束」不往下走。
     if po_mids.iter().all(|m| is_played(ctx, *m)) {
+        // ⚠️ B 组的季后赛槽必须先补满再 finalize：引擎 finalize 时按 playoffs
+        // 算 1-6 名，空数组就一个名次都算不出来，CN/TACJ 赛区在国际杯种子分配里
+        // 会少供 2 队（东区申请 4 个），抽签池变成 14 队 → 兜底分配越界 panic。
+        // `maybe_fill_b_playoffs` 依赖 `sab_comps`（只看**未 finalize** 的容器），
+        // 一旦这里先把 B 标成 finalized，它就再也补不上了 —— 所以必须在
+        // 打上 finalized 之前补。（0.6.5 上这个顺序问题比种子表偏移更致命：
+        // 它完全不依赖内存扫描。）
+        maybe_fill_b_playoffs(ctx);
         for cid in [c.a, c.b] {
             let fin = ctx
                 .record_get_json(RecordKindV1::LeagueCompetition, cid, "finalized")
@@ -3364,13 +3484,18 @@ fn maybe_draw_groups(ctx: &mut StableServerCtx<'_>) {
         .into_iter()
         .filter(|&t| is_filler_team(&team_name(ctx, t)))
         .collect();
-    if reals.len() != 18 || fillers.len() != 12 {
+    // 少一队就抽不了（分成 3×6 + 3×4 需要这些队）；多出来的队忽略 —— 0.7.0 的
+    // Manager career 会在运行期新建/迁入球队，这里不能因为「不是正好 30 支」
+    // 就静默放弃整轮抽签，否则挂名队会一直留在积分榜上。
+    if reals.len() < 18 || fillers.len() < 12 {
         return;
     }
 
     let mut rng = DrawRng::new();
     rng.shuffle(&mut reals);
     rng.shuffle(&mut fillers);
+    reals.truncate(18);
+    fillers.truncate(12);
 
     let mut groups: Vec<Vec<usize>> = Vec::new();
     let mut fgroups: Vec<Vec<usize>> = Vec::new();
@@ -3393,8 +3518,16 @@ fn maybe_draw_groups(ctx: &mut StableServerCtx<'_>) {
     }
 
     // ② K甲 归位：引擎原生升降级可能把真队降进 K甲、把青训队升进 S/A/B。
-    //    凡是既不是 18 真队、也不是 12 挂名队的 CN 队，一律放回 K甲。
+    //    只把**既不是 18 真队、也不是 12 挂名、而且在 S/A/B 里**的 CN 队放回 K甲。
+    //
+    //    ⚠️ 从 K甲 里捞队这一步必须收窄：0.7.0 的 `Expansion` 开档模式会在二级
+    //    联赛新建一支空阵容球队，它同样不在这两份名单里。旧写法「非真非挂就归位」
+    //    会把玩家自己的新队直接踢进 K甲。
     let cn_lids: Vec<usize> = ["TACC", "TACC2", "TACJ", "TACJ2"]
+        .iter()
+        .filter_map(|n| league_id_by_name(ctx, n))
+        .collect();
+    let sab_lids: Vec<usize> = ["TACC", "TACC2", "TACJ"]
         .iter()
         .filter_map(|n| league_id_by_name(ctx, n))
         .collect();
@@ -3408,17 +3541,23 @@ fn maybe_draw_groups(ctx: &mut StableServerCtx<'_>) {
             let lid = ctx
                 .record_get_json(RecordKindV1::Team, t, "league_id")
                 .and_then(|j| j.trim().parse::<usize>().ok());
-            if lid.map(|l| cn_lids.contains(&l)).unwrap_or(false) {
-                let name = team_name(ctx, t);
-                if !is_real_kpl(&name) && !is_filler_team(&name) {
-                    let _ = rec_set_json(
-                        ctx,
-                        RecordKindV1::Team,
-                        t,
-                        "league_id",
-                        &kgl_lid.to_string(),
-                    );
-                }
+            // 只处理「占着 S/A/B 席位但不是本 mod 认得的队」；已经在 K甲 的
+            // 队（含玩家的 Expansion 新队、以及原版青训队）保持原样。
+            if !lid.map(|l| sab_lids.contains(&l)).unwrap_or(false) {
+                continue;
+            }
+            if !cn_lids.contains(&lid.unwrap_or(0)) {
+                continue;
+            }
+            let name = team_name(ctx, t);
+            if !is_real_kpl(&name) && !is_filler_team(&name) {
+                let _ = rec_set_json(
+                    ctx,
+                    RecordKindV1::Team,
+                    t,
+                    "league_id",
+                    &kgl_lid.to_string(),
+                );
             }
         }
     }
@@ -3712,7 +3851,11 @@ fn concrete_team(ctx: &StableServerCtx<'_>, mid: usize, field: &str) -> Option<u
 /// 一场没打，引擎会按积分表把它们排在名次表后面），让 finalize 至少能算出
 /// 「季后赛参赛队」这一段名次，不再返回空名次表。
 fn maybe_fill_b_playoffs(ctx: &mut StableServerCtx<'_>) {
-    let Some(c) = sab_comps(ctx) else { return };
+    // B 一旦被 finalize，`sab_comps`（只看未 finalize 的容器）就返回 None。
+    // 赛季末重读档时正是这个状态，必须走 `sab_comps_all` 才能继续补槽。
+    let Some(c) = sab_comps(ctx).or_else(|| sab_comps_all(ctx)) else {
+        return;
+    };
     let Some(mids) = comp_mids(ctx, c.b) else { return };
     if mids.len() < 45 || mids[..45].iter().any(|m| !is_played(ctx, *m)) {
         return;
@@ -5438,6 +5581,15 @@ declare_stable_mod!(init);
 mod tests {
     use super::*;
 
+    /// 几个单测都会动全局 tick / played 缓存（`OnceLock<Mutex<..>>`），
+    /// `cargo test` 默认多线程跑，互相清缓存会让断言随机失败。所有碰缓存的
+    /// 用例先拿这把锁，等价于串行执行。
+    static CACHE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn cache_test_guard() -> std::sync::MutexGuard<'static, ()> {
+        CACHE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// UI 源必须能解析成「单节点 + 子节点树」，否则 spawn 会被 host 拒绝。
     /// 这里只做纯文本校验，不写任何文件。
     #[test]
@@ -5566,6 +5718,7 @@ mod tests {
     /// 「打完」缓存的降级方向必须是「漏读成没打完」而不是反的。
     #[test]
     fn cache_invariants() {
+        let _guard = cache_test_guard();
         // tick 缓存：写 Match 相关字段后对应条目必须消失。
         cache_clear();
         {
@@ -5646,6 +5799,7 @@ mod tests {
     /// 这里用真实线程并发地读写，跑不出死锁即通过（超时由测试框架兜底）。
     #[test]
     fn cache_locks_do_not_deadlock() {
+        let _guard = cache_test_guard();
         played_cache_reset();
         cache_clear();
         let mut hs = Vec::new();
@@ -5679,5 +5833,102 @@ mod tests {
         }
         played_cache_reset();
         cache_clear();
+    }
+
+    // ---------------- 国际杯种子分配表识别 ----------------
+    //
+    // `seed_table_ok` 全走 ReadProcessMemory 读本进程内存，所以能直接在测试里
+    // 摆一张真表来验证：真实形状认得出，而挪了位置 / 无关内存必须判成 None
+    // —— 误判会往野内存写数据，那是会把游戏写崩的。
+
+    /// 在测试进程里摆一张 `Vec<InternationalSeedAllocation>`。
+    ///
+    /// `blob` 是一段够长的内存，表头摆在 `off`；条目放在一块**连续**的 `arr`
+    /// 里（真实引擎也是连续 Vec），槽位 Vec 放在别的堆对象上，指针真的指向
+    /// 它们 —— `seed_table_ok` 走的是完全真实的读取路径。
+    struct FakeSeedTable {
+        _slot_vecs: Vec<Vec<[u64; 3]>>,
+        _arr: Vec<u64>,
+        blob: Box<[u64; 0x1c000 / 8]>,
+    }
+
+    impl FakeSeedTable {
+        /// `ty` 依次给每个条目；每组槽位是 `(region_id, count)` 列表。
+        fn new(rows: &[(u64, [&[(u64, u64)]; 3])], off: usize) -> Self {
+            let mut slot_vecs: Vec<Vec<[u64; 3]>> = Vec::new();
+            let mut arr: Vec<u64> = vec![0; rows.len() * (0x58 / 8)];
+            for (i, (ty, groups)) in rows.iter().enumerate() {
+                let e = i * (0x58 / 8);
+                arr[e + 0x48 / 8] = 2026; // 年份（已不再参与判定）
+                arr[e + 0x50 / 8] = *ty;
+                for (vi, g) in groups.iter().enumerate() {
+                    let mut v: Vec<[u64; 3]> = g.iter().map(|&(r, c)| [r, c, 0]).collect();
+                    v.shrink_to_fit();
+                    arr[e + (0x08 + vi * 0x18) / 8] = v.as_ptr() as u64;
+                    arr[e + (0x10 + vi * 0x18) / 8] = v.len() as u64;
+                    slot_vecs.push(v);
+                }
+            }
+            let mut blob = Box::new([0u64; 0x1c000 / 8]);
+            blob[off / 8 - 1] = rows.len() as u64; // cap
+            blob[off / 8] = arr.as_ptr() as u64; // ptr
+            blob[off / 8 + 1] = rows.len() as u64; // len
+            FakeSeedTable { _slot_vecs: slot_vecs, _arr: arr, blob }
+        }
+        fn base(&self) -> usize {
+            self.blob.as_ptr() as usize
+        }
+    }
+
+    /// 造一张「真实形状」的表：Masters 每赛区 4 队、Challengers 8 队。
+    fn real_rows() -> [(u64, [&'static [(u64, u64)]; 3]); 3] {
+        [
+            (0, [&[(0, 4), (1, 4)], &[(2, 3), (3, 3), (4, 2)], &[]]),
+            (1, [&[(0, 4), (1, 4)], &[(2, 3), (3, 3), (4, 2)], &[]]),
+            (2, [&[(0, 8), (1, 8)], &[(2, 4), (3, 4)], &[]]),
+        ]
+    }
+
+    #[test]
+    fn seed_table_is_recognised_at_known_offset() {
+        let t = FakeSeedTable::new(&real_rows(), SEED_OFF_HINT);
+        let live = seed_table_ok(t.base(), SEED_OFF_HINT).expect("已知偏移上应认得出");
+        assert_eq!(live, 3, "三条记录都申请了队伍");
+    }
+
+    #[test]
+    fn seed_table_rejects_wrong_offset_and_junk() {
+        // 表头挪走（模拟 world 往后挪）：已知偏移上必须是 None，不能误改野内存。
+        let t = FakeSeedTable::new(&real_rows(), 0x18110);
+        assert_eq!(seed_table_ok(t.base(), 0x18110), Some(3), "挪过去的仍认得出");
+        assert_eq!(seed_table_ok(t.base(), SEED_OFF_HINT), None, "错偏移不该命中");
+
+        // 全零内存：len=0 ⇒ None。
+        let zero = Box::new([0u64; 0x1c000 / 8]);
+        let w = zero.as_ptr() as usize;
+        assert_eq!(seed_table_ok(w, SEED_OFF_HINT), None);
+
+        // 看起来像指针、但指向不可读地址的条目：也必须 None。
+        let mut junk = Box::new([0u64; 0x1c000 / 8]);
+        junk[SEED_OFF_HINT / 8 - 1] = 8;
+        junk[SEED_OFF_HINT / 8] = 0x1000_0000_0000u64;
+        junk[SEED_OFF_HINT / 8 + 1] = 8;
+        assert_eq!(seed_table_ok(junk.as_ptr() as usize, SEED_OFF_HINT), None);
+    }
+
+    /// 槽位列表的结构校验：正常表通过，越界 / 超大数被拒。
+    #[test]
+    fn seed_slots_validate() {
+        let v: Vec<[u64; 3]> = vec![[0, 6, 0], [1, 6, 0], [5, 4, 0]];
+        assert_eq!(seed_slots_live(v.as_ptr() as u64, v.len() as u64), Some(3));
+        let bad: Vec<[u64; 3]> = vec![[0, 99, 0]];
+        assert_eq!(seed_slots_live(bad.as_ptr() as u64, bad.len() as u64), None);
+        let bad_region: Vec<[u64; 3]> = vec![[77, 4, 0]];
+        assert_eq!(
+            seed_slots_live(bad_region.as_ptr() as u64, bad_region.len() as u64),
+            None
+        );
+        // 空列表合法，但没有「申请队伍的赛区」
+        assert_eq!(seed_slots_live(0, 0), Some(0));
     }
 }
