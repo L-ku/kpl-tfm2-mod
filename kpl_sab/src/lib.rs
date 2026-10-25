@@ -1565,12 +1565,31 @@ mod seedscan {
 //    布局，不随 world 挪动）**，取全表最大值当当前赛季；`find_world` 换成一个
 //    只在固定偏移上做的**结构校验**（`seed_table_ok`），不做宽范围扫描 ——
 //    误判会往野内存写数据，那比不修更糟。
+//
+// ⚠️ 2026-10-25 二次核对（本机切到 0.6.5 后直接反汇编两个 exe）：
+//    条目内部布局完全一致（0x58 / 年份 +0x48 / 类型 +0x50 单字节 / 槽位 0x18），
+//    但**种子表在 world 里的基址是不同的**：
+//      · beta build 26099334：ptr +0x169a8、len +0x169b0、年份字段 +0x18010
+//      · public build 26098872 (0.6.5)：ptr +0x16800、len +0x16808、年份字段 +0x177a0
+//    所以「单一固定偏移」这条在 0.6.5 上本来是失效的（cap 归一化不生效，
+//    只剩 B 组补槽那一道保险）。现在改成 `SEED_OFFS` 候选列表，逐个用
+//    `seed_table_ok` 结构校验 —— 结构不符的候选会被直接否掉，不会误写内存。
 static WORLD_ADDR: AtomicUsize = AtomicUsize::new(0);
 
 /// 定位尝试计数（找不到就退避，避免每个 tick 白扫 130 个候选）。
 static SEED_TRIES: AtomicUsize = AtomicUsize::new(0);
 
-const SEED_OFF_HINT: usize = 0x169a8;
+/// 各版本上种子表 `Vec<InternationalSeedAllocation>` 的 ptr 偏移。
+///
+/// 2026-10-25 反汇编两个真实 exe 得到的实测值（条目内部布局完全相同，
+/// 只有 world 里的基址不同）：
+///   - beta build 26099334（0.7.0_beta2）：ptr `+0x169a8`、len `+0x169b0`、年份字段 `+0x18010`
+///   - public build 26098872（**0.6.5**）：ptr `+0x16800`、len `+0x16808`、年份字段 `+0x177a0`
+///
+/// 全部靠 `seed_table_ok` 的结构校验确认（len 1..=64、每条类型 ≤3、
+/// 三组槽位全可读、至少一条申请了队伍），所以列表里多列几个不会有副作用：
+/// 命中不了的候选会被结构校验直接否掉，不会误写野内存。
+const SEED_OFFS: &[usize] = &[0x169a8, 0x16800];
 /// 一条 `InternationalSeedAllocation`：三个 `Vec<SeedSlotEntry>` + 年份 + 类型。
 const SEED_ENTRY_SIZE: usize = 0x58;
 /// 一条 `SeedSlotEntry`（`{league/region id, count, ..}`）。
@@ -1642,17 +1661,22 @@ fn seed_table_ok(w: usize, off: usize) -> Option<usize> {
 
 /// 找种子分配表：返回 `(world, 表在 world 里的偏移)`。
 ///
-/// **只在已知偏移上做结构校验，不做宽范围扫描。** 这张表的位置在 0.6.x /
-/// 0.7.0_beta2 / build 26099334 三个版本上都是 0x169a8；如果将来真的挪走，
-/// 这里会返回 None（种子表修正失效），由 `maybe_playoffs` 里的 B 组季后赛兜底
-/// 保证抽签池不缺队 —— 宁可不修，也不能往野内存写数据把游戏写崩。
+/// **只在已知的几个偏移上做结构校验，不做宽范围扫描。** 已知偏移见
+/// `SEED_OFFS`（0.7.0_beta2 = 0x169a8、0.6.5 = 0x16800，都是反汇编实测）。
+/// 如果将来真的挪到别处，这里会返回 None（种子表修正失效），由
+/// `maybe_playoffs` 里的 B 组季后赛兜底保证抽签池不缺队 —— 宁可不修，
+/// 也不能往野内存写数据把游戏写崩。
 fn locate_seed_table(s: usize) -> Option<(usize, usize)> {
     if s < 0x10000 {
         return None;
     }
     let cached_w = WORLD_ADDR.load(Ordering::Relaxed);
-    if cached_w != 0 && seed_table_ok(cached_w, SEED_OFF_HINT).is_some() {
-        return Some((cached_w, SEED_OFF_HINT));
+    if cached_w != 0 {
+        for &off in SEED_OFFS {
+            if seed_table_ok(cached_w, off).is_some() {
+                return Some((cached_w, off));
+            }
+        }
     }
     // 找不到就退避：前 4 次照找（进服时状态还没铺开，早失败很正常），
     // 之后每 64 次才重试，避免每个 tick 白扫 130 个候选。
@@ -1669,9 +1693,11 @@ fn locate_seed_table(s: usize) -> Option<(usize, usize)> {
         }
     }
     for &w in cands.iter().take(130) {
-        if seed_table_ok(w, SEED_OFF_HINT).is_some() {
-            WORLD_ADDR.store(w, Ordering::Relaxed);
-            return Some((w, SEED_OFF_HINT));
+        for &off in SEED_OFFS {
+            if seed_table_ok(w, off).is_some() {
+                WORLD_ADDR.store(w, Ordering::Relaxed);
+                return Some((w, off));
+            }
         }
     }
     None
@@ -5889,31 +5915,39 @@ mod tests {
         ]
     }
 
+    /// 两个版本的真实偏移都必须认得出来 —— 这是 1.6.5 跨版本修复的核心保证。
     #[test]
-    fn seed_table_is_recognised_at_known_offset() {
-        let t = FakeSeedTable::new(&real_rows(), SEED_OFF_HINT);
-        let live = seed_table_ok(t.base(), SEED_OFF_HINT).expect("已知偏移上应认得出");
-        assert_eq!(live, 3, "三条记录都申请了队伍");
+    fn seed_table_recognised_at_every_known_offset() {
+        for &off in SEED_OFFS {
+            let t = FakeSeedTable::new(&real_rows(), off);
+            let live = seed_table_ok(t.base(), off)
+                .unwrap_or_else(|| panic!("偏移 0x{:x} 上应认得出", off));
+            assert_eq!(live, 3, "偏移 0x{:x}: 三条记录都申请了队伍", off);
+        }
     }
 
     #[test]
     fn seed_table_rejects_wrong_offset_and_junk() {
-        // 表头挪走（模拟 world 往后挪）：已知偏移上必须是 None，不能误改野内存。
+        // 表头挪到列表外的位置：已知偏移上必须是 None，不能误改野内存。
         let t = FakeSeedTable::new(&real_rows(), 0x18110);
         assert_eq!(seed_table_ok(t.base(), 0x18110), Some(3), "挪过去的仍认得出");
-        assert_eq!(seed_table_ok(t.base(), SEED_OFF_HINT), None, "错偏移不该命中");
+        assert_eq!(seed_table_ok(t.base(), SEED_OFFS[0]), None, "错偏移不该命中");
+        assert_eq!(seed_table_ok(t.base(), SEED_OFFS[1]), None, "错偏移不该命中");
 
         // 全零内存：len=0 ⇒ None。
         let zero = Box::new([0u64; 0x1c000 / 8]);
         let w = zero.as_ptr() as usize;
-        assert_eq!(seed_table_ok(w, SEED_OFF_HINT), None);
+        for &off in SEED_OFFS {
+            assert_eq!(seed_table_ok(w, off), None);
+        }
 
         // 看起来像指针、但指向不可读地址的条目：也必须 None。
         let mut junk = Box::new([0u64; 0x1c000 / 8]);
-        junk[SEED_OFF_HINT / 8 - 1] = 8;
-        junk[SEED_OFF_HINT / 8] = 0x1000_0000_0000u64;
-        junk[SEED_OFF_HINT / 8 + 1] = 8;
-        assert_eq!(seed_table_ok(junk.as_ptr() as usize, SEED_OFF_HINT), None);
+        let off = SEED_OFFS[0];
+        junk[off / 8 - 1] = 8;
+        junk[off / 8] = 0x1000_0000_0000u64;
+        junk[off / 8 + 1] = 8;
+        assert_eq!(seed_table_ok(junk.as_ptr() as usize, off), None);
     }
 
     /// 槽位列表的结构校验：正常表通过，越界 / 超大数被拒。
