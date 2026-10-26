@@ -5612,17 +5612,34 @@ fn po_split_body(body: &str) -> (String, Vec<PoNode>) {
 
 // -- 点击绑定（host 会同时发 click 和 path-event，按帧去重） --
 
+/// 一次物理点击最多占多少帧。低于这个间隔的重复触发一律当同一次点击。
+///
+/// 依据：点击事件的两个投递通道（`register_click` 和 `register_path_events`）
+/// 都是 `UiEventKindV1::Click`，无法按类型区分，只能按时间聚。人手的双击间隔
+/// 远大于 4 帧（60fps 下约 66ms），而通道之间的错位只会是 1~2 帧。
+const PO_PRESS_FRAMES: u64 = 4;
+
+/// 这次触发算不算「一次新的按键」。`prev` 是上次接受过的帧号（`u64::MAX` = 还没按过）。
+fn po_press_is_new(prev: u64, f: u64) -> bool {
+    if prev == u64::MAX {
+        return true;
+    }
+    f.wrapping_sub(prev) >= PO_PRESS_FRAMES
+}
+
 /// 绑定一个按钮。`close = true` 表示这个按钮只负责关面板。
 ///
 /// ⚠️ 两个坑（「按钮有一定概率点不开」就是这两个叠出来的）：
 ///
-/// 1. **按钮动作必须幂等，不能翻转。** host 在同一个按钮上会同时触发
-///    `register_click` 和 `register_path_events` 两个通道；同帧去重只能挡住
-///    「同一帧内的重复」，挡不住两者落在相邻帧。翻转写法 `open = !open`
-///    只要被触发两次就抵消回原状，表现为「点了没反应」——而且概率性。
+/// 1. **同一次点击可能被投递两次，且不一定同帧。** host 在同一个按钮上同时
+///    触发 `register_click` 和 `register_path_events` 两个通道。旧代码只挡
+///    「帧号完全相同」的重复，两者一旦落在相邻帧就各算一次 —— 而按钮动作是
+///    翻转 `open = !open`，翻转两次就抵消回原状，表现为**点了没反应**，
+///    且只在错位时发生 = 「有一定概率」。
 ///    对照实测：kpl_scout 的打开动作是 `open = true`（幂等），同一个 host、
-///    同样的双通道注册，它的按钮从没出过这个问题。
-///    所以这里按钮只负责**开**（`open = true`），关由 × 按钮和 F8 负责。
+///    同样的双通道注册，它的按钮从来没出过这个问题 —— 差别就在这里。
+///    现在改成「按 `PO_PRESS_FRAMES` 帧聚成一次按键」，既挡住重复投递，
+///    又保留开/关切换。
 ///
 /// 2. **底部栏会被引擎整体重建。** kpl_scout 的日志里 `bind main.bottom.fp_btn`
 ///    出现了 1172 次（`button spawn FAILED` 0 次）——即每次重建后都得重新绑，
@@ -5634,16 +5651,17 @@ fn po_bind(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>, path: &str, clo
         let last = last.clone();
         move |c: &mut StableClient<'_>| {
             let f = st.lock().unwrap().frames;
-            if last.swap(f, Ordering::SeqCst) == f {
+            // 同一次按键：与上次接受过的按键相隔不足 PO_PRESS_FRAMES 帧。
+            if !po_press_is_new(last.load(Ordering::SeqCst), f) {
                 return;
             }
+            last.store(f, Ordering::SeqCst);
             let mut s = st.lock().unwrap();
             s.clicks = s.clicks.saturating_add(1);
             if close {
                 s.open = false;
             } else {
-                // 幂等置位：重复触发不会把面板又关回去。
-                s.open = true;
+                s.open = !s.open;
                 s.dirty = true;
             }
             let open = s.open;
@@ -6193,5 +6211,29 @@ mod tests {
         );
         // 空列表合法，但没有「申请队伍的赛区」
         assert_eq!(seed_slots_live(0, 0), Some(0));
+    }
+
+    /// 「季后赛」按钮的按键去重。
+    ///
+    /// 背景：host 对同一个按钮会同时走 `register_click` 和 `register_path_events`
+    /// 两个通道，两者可能落在同一帧，也可能错开 1~2 帧。旧代码只挡「帧号完全
+    /// 相同」，错帧时同一次点击被算两次，而按钮动作是翻转 —— 翻两次就抵消，
+    /// 表现成「点了没反应」（也就是用户报的「有一定概率点不开」）。
+    #[test]
+    fn press_dedup_collapses_one_click() {
+        // 第一次按下永远算数。
+        assert!(po_press_is_new(u64::MAX, 100));
+        // 同一帧的第二个通道：必须挡掉。
+        assert!(!po_press_is_new(100, 100));
+        // 错开 1~3 帧的第二个通道：也必须挡掉（旧代码在这里漏了）。
+        for gap in 1..PO_PRESS_FRAMES {
+            assert!(
+                !po_press_is_new(100, 100 + gap),
+                "gap={gap} should be the same click"
+            );
+        }
+        // 隔开足够久 = 用户真的又点了一次。
+        assert!(po_press_is_new(100, 100 + PO_PRESS_FRAMES));
+        assert!(po_press_is_new(100, 400));
     }
 }
