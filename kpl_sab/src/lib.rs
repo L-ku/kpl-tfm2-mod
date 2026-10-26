@@ -5238,6 +5238,13 @@ struct PoState {
     dirty: bool,
     fail: u32,
     handlers: bool,
+    /// 底部按钮这棵节点绑过 handler 了没有。节点被引擎重建（`ui_exists`
+    /// 变 false）就要复位，否则那次重建后按钮是死的。
+    btn_bound: bool,
+    /// 诊断用：底部按钮被重建并重新绑定了几次、handler 真被触发了几次。
+    /// 「按钮点不开」时看这两个数就能分清是「没绑上」还是「绑上了但被抵消」。
+    btn_binds: u32,
+    clicks: u32,
 }
 
 struct PoExt {
@@ -5261,6 +5268,9 @@ fn po_tick(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>) {
                 s.open = false;
                 s.rows = 0;
                 s.fail = 0;
+                // 重进游戏界面时 UI 是全新的，绑定状态全部作废。
+                s.handlers = false;
+                s.btn_bound = false;
             }
             return;
         }
@@ -5330,19 +5340,21 @@ fn po_tick(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>) {
 /// 返回这一帧开始时的 `rows`（调用方用它判断「刚建了新的一批」，需要补一次绘制）。
 fn po_ensure_ui(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>) -> usize {
     let rows0 = st.lock().unwrap().rows;
-    if !ctx.ui_exists(PO_BTN_PATH) {
-        if ctx.ui_spawn_source("main.bottom", PO_BTN_SRC) {
-            po_bind(ctx, st, PO_BTN_PATH, false);
-        }
-    }
+    po_ensure_btn(ctx, st);
     if !ctx.ui_exists(PO_UI_PATH) {
-        if st.lock().unwrap().fail >= 3 {
+        // ⚠️ 旧代码是 `fail >= 3` 就整局放弃建面板 —— 一次瞬时失败（比如那一帧
+        // 原生 UI 还没就绪）会让人再也打不开面板，且 `fail` 只在离开游戏界面
+        // 才归零。改成计数到 3 次后**降频重试**而不是放弃。
+        let fails = st.lock().unwrap().fail;
+        let retry = fails < 3 || st.lock().unwrap().frames % 120 == 0;
+        if !retry {
             return rows0;
         }
         if !po_spawn_tree(ctx, "main", PO_ROOT_SRC) {
-            st.lock().unwrap().fail += 1;
+            st.lock().unwrap().fail = fails.saturating_add(1);
             return rows0;
         }
+        st.lock().unwrap().fail = 0;
     }
     let shell = format!("{PO_UI_PATH}.panel");
     if !ctx.ui_exists(&shell) {
@@ -5363,7 +5375,11 @@ fn po_ensure_ui(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>) -> usize {
     // 那个按钮从来没绑过事件。用户实测踩到的就是这个（面板空白 + × 无反应）。
     // 关闭按钮在第一帧就已经存在（header 刚建好），所以这里立刻绑，不等卡片。
     let close_path = format!("{shell}.header.close");
-    if !st.lock().unwrap().handlers && ctx.ui_exists(&close_path) {
+    let close_exists = ctx.ui_exists(&close_path);
+    // 节点不在 ⇒ `handlers` 作废（面板被引擎重建过，旧 handler 随节点没了）。
+    if !close_exists {
+        st.lock().unwrap().handlers = false;
+    } else if !st.lock().unwrap().handlers {
         po_bind(ctx, st, &close_path, true);
         st.lock().unwrap().handlers = true;
     }
@@ -5395,22 +5411,46 @@ fn po_ensure_ui(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>) -> usize {
     let open = st.lock().unwrap().open;
     ctx.ui_set_visible(PO_UI_PATH, open);
     // 面板自检：把「节点到底建出来没有」写进存档，反馈者发存档即可定位。
-    // 只在面板打开时跑，且内容没变就不写（避免标脏）。
+    //
+    // ⚠️ 必须**面板关着也写**。「按钮点不开」的现场就是 `open == 0`，旧代码
+    // 只在打开时写诊断，等于永远抓不到点不开那一刻的状态。这里只在
+    // `btnbinds` / `clicks` 变化时写，同一状态不重复写，不会把存档标脏。
+    {
+        let (binds, clicks) = {
+            let s = st.lock().unwrap();
+            (s.btn_binds, s.clicks)
+        };
+        let prev = ctx.save_get_string("kpl_diag_po_btn").unwrap_or_default();
+        let now = format!("btnbinds={binds} clicks={clicks} open={}", open as u8);
+        if prev != now {
+            ctx.save_set_string("kpl_diag_po_btn", &now);
+        }
+    }
     if open {
         let shell2 = format!("{PO_UI_PATH}.panel");
+        let (rows_n, binds, clicks, btn_ok) = {
+            let s = st.lock().unwrap();
+            (s.rows, s.btn_binds, s.clicks, s.btn_bound)
+        };
         let diag = format!(
-            "root={} shell={} header={} r0={} r0name={} close={} rows={} total={} cards={}",
+            "root={} shell={} header={} r0={} r0name={} close={} rows={} total={} cards={} \
+             btn={} btnbinds={} clicks={}",
             ctx.ui_exists(PO_UI_PATH) as u8,
             ctx.ui_exists(&shell2) as u8,
             ctx.ui_exists(&format!("{shell2}.header")) as u8,
             ctx.ui_exists(&format!("{shell2}.r0")) as u8,
             ctx.ui_exists(&format!("{shell2}.r0.team0.name")) as u8,
             ctx.ui_exists(&format!("{shell2}.header.close")) as u8,
-            st.lock().unwrap().rows,
+            rows_n,
             PO_ROWS,
             ctx.save_get_string(PO_BOARD_KEY)
                 .map(|b| b.lines().skip(1).count())
                 .unwrap_or(0),
+            // btn = 底部按钮节点在不在；btnbinds = 重建重绑过几次；
+            // clicks = handler 真被触发过几次（点了没开 = clicks 涨但 open 没开）。
+            btn_ok as u8,
+            binds,
+            clicks,
         );
         if ctx.save_get_string("kpl_diag_po").as_deref() != Some(diag.as_str()) {
             ctx.save_set_string("kpl_diag_po", &diag);
@@ -5572,6 +5612,21 @@ fn po_split_body(body: &str) -> (String, Vec<PoNode>) {
 
 // -- 点击绑定（host 会同时发 click 和 path-event，按帧去重） --
 
+/// 绑定一个按钮。`close = true` 表示这个按钮只负责关面板。
+///
+/// ⚠️ 两个坑（「按钮有一定概率点不开」就是这两个叠出来的）：
+///
+/// 1. **按钮动作必须幂等，不能翻转。** host 在同一个按钮上会同时触发
+///    `register_click` 和 `register_path_events` 两个通道；同帧去重只能挡住
+///    「同一帧内的重复」，挡不住两者落在相邻帧。翻转写法 `open = !open`
+///    只要被触发两次就抵消回原状，表现为「点了没反应」——而且概率性。
+///    对照实测：kpl_scout 的打开动作是 `open = true`（幂等），同一个 host、
+///    同样的双通道注册，它的按钮从没出过这个问题。
+///    所以这里按钮只负责**开**（`open = true`），关由 × 按钮和 F8 负责。
+///
+/// 2. **底部栏会被引擎整体重建。** kpl_scout 的日志里 `bind main.bottom.fp_btn`
+///    出现了 1172 次（`button spawn FAILED` 0 次）——即每次重建后都得重新绑，
+///    旧的 handler 随节点一起失效。所以绑定要跟着 `ui_exists` 走，不能只绑一次。
 fn po_bind(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>, path: &str, close: bool) {
     let last = Arc::new(AtomicU64::new(u64::MAX));
     let run = {
@@ -5583,10 +5638,12 @@ fn po_bind(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>, path: &str, clo
                 return;
             }
             let mut s = st.lock().unwrap();
+            s.clicks = s.clicks.saturating_add(1);
             if close {
                 s.open = false;
             } else {
-                s.open = !s.open;
+                // 幂等置位：重复触发不会把面板又关回去。
+                s.open = true;
                 s.dirty = true;
             }
             let open = s.open;
@@ -5597,13 +5654,39 @@ fn po_bind(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>, path: &str, clo
         }
     };
     let r1 = run.clone();
-    ctx.ui_register_click(path, "", move |c| r1(c));
+    let ok1 = ctx.ui_register_click(path, "", move |c| r1(c));
     let r2 = run;
-    ctx.ui_register_path_events(path, move |c| {
+    let ok2 = ctx.ui_register_path_events(path, move |c| {
         if c.ui_current_event().map_or(true, |e| e.kind == Some(UiEventKindV1::Click)) {
             r2(c);
         }
     });
+    // 两个通道都注册失败 = 这个按钮根本没接上，值得记一笔。
+    if !ok1 && !ok2 {
+        ctx.save_set_string("kpl_diag_po_btn", "both register failed");
+    }
+}
+
+/// 底部按钮每次被引擎重建后都要重新绑。`po_ensure_ui` 里调用。
+fn po_ensure_btn(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>) {
+    let exists = ctx.ui_exists(PO_BTN_PATH);
+    if !exists {
+        // 节点不在 ⇒ 下次绑定要重来（引擎重建底部栏时旧 handler 一起没了）。
+        if st.lock().unwrap().btn_bound {
+            st.lock().unwrap().btn_bound = false;
+        }
+        if ctx.ui_spawn_source("main.bottom", PO_BTN_SRC) {
+            // spawn 成功这一帧节点还不能查询，绑定交给下一帧。
+            st.lock().unwrap().btn_bound = false;
+        }
+        return;
+    }
+    if !st.lock().unwrap().btn_bound {
+        po_bind(ctx, st, PO_BTN_PATH, false);
+        let mut s = st.lock().unwrap();
+        s.btn_bound = true;
+        s.btn_binds = s.btn_binds.saturating_add(1);
+    }
 }
 
 // -- 绘制：读服务端落盘的 16 行，填进原版样式的卡片 --
@@ -5717,6 +5800,9 @@ fn init(host: &StableHost) -> StableMod {
             dirty: false,
             fail: 0,
             handlers: false,
+            btn_bound: false,
+            btn_binds: 0,
+            clicks: 0,
         })),
     });
     decl
