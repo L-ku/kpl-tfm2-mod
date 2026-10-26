@@ -1898,8 +1898,9 @@ fn report_seed_diag(ctx: &mut StableServerCtx<'_>, diag: &str) {
     if diag.is_empty() {
         return;
     }
-    let mut s = diag.to_string();
-    s.truncate(400); // 存档值是短字符串，别撑爆
+    // 存档值是短字符串，别撑爆。`truncate` 落在 UTF-8 字符中间会 panic，
+    // 这里按字符边界砍（内容本来就是 ASCII，但别留隐患）。
+    let s: String = diag.chars().take(400).collect();
     if ctx.save_get_string("kpl_diag_seed").as_deref() == Some(s.as_str()) {
         return;
     }
@@ -5306,11 +5307,16 @@ fn po_tick(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>) {
             ctx.ui_set_visible(PO_UI_PATH, open);
         }
     }
-    po_ensure_ui(ctx, st);
+    let rows_before = po_ensure_ui(ctx, st);
     let dirty = {
         let mut s = st.lock().unwrap();
         // 面板开着时每秒重读一次赛程：比赛打完/对阵确定后比分和队名会自动更新。
         if s.open && s.frames % 60 == 0 {
+            s.dirty = true;
+        }
+        // 刚建好一批卡片：内容还没填过，必须重绘一次。否则面板是空的，
+        // 要等下一轮 60 帧（1 秒）才会画上。
+        if s.open && rows_before != s.rows {
             s.dirty = true;
         }
         s.dirty && s.open
@@ -5321,7 +5327,9 @@ fn po_tick(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>) {
     }
 }
 
-fn po_ensure_ui(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>) {
+/// 返回这一帧开始时的 `rows`（调用方用它判断「刚建了新的一批」，需要补一次绘制）。
+fn po_ensure_ui(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>) -> usize {
+    let rows0 = st.lock().unwrap().rows;
     if !ctx.ui_exists(PO_BTN_PATH) {
         if ctx.ui_spawn_source("main.bottom", PO_BTN_SRC) {
             po_bind(ctx, st, PO_BTN_PATH, false);
@@ -5329,49 +5337,86 @@ fn po_ensure_ui(ctx: &mut StableClient<'_>, st: &Arc<Mutex<PoState>>) {
     }
     if !ctx.ui_exists(PO_UI_PATH) {
         if st.lock().unwrap().fail >= 3 {
-            return;
+            return rows0;
         }
         if !po_spawn_tree(ctx, "main", PO_ROOT_SRC) {
             st.lock().unwrap().fail += 1;
-            return;
+            return rows0;
         }
     }
     let shell = format!("{PO_UI_PATH}.panel");
     if !ctx.ui_exists(&shell) {
         if !po_spawn_tree(ctx, PO_UI_PATH, PO_SHELL_SRC) {
-            return;
+            return rows0;
         }
     }
     if !ctx.ui_exists(&format!("{shell}.header")) {
         if !po_spawn_tree(ctx, &shell, &po_header_src()) {
-            return;
+            return rows0;
         }
     }
-    // 16 张卡各自是一棵子树。每帧只建 3 棵（一整帧建 16 棵会让画面卡一下），
-    // 用 `rows` 记录建到第几张；全部建好后才开始绘制。
-    let mut rows = st.lock().unwrap().rows;
-    while rows < PO_ROWS {
-        for slot in rows..(rows + 3).min(PO_ROWS) {
-            if !po_spawn_tree(ctx, &shell, &po_row_src(slot)) {
-                return;
-            }
-        }
-        rows = (rows + 3).min(PO_ROWS);
-        if !ctx.ui_exists(&format!("{shell}.r{}.team0.name", rows - 1)) {
-            return; // 本批还没落地，下一帧再来
-        }
-        st.lock().unwrap().rows = rows;
-        if rows < PO_ROWS {
-            return;
-        }
-    }
+    // ⚠️ 关闭按钮的绑定必须排在「建卡片」之前。
+    //
+    // 旧顺序是先建完 16 棵卡片子树才绑关闭按钮，而每帧只建 3 棵、任何一棵 spawn
+    // 失败就直接 return。结果是一旦卡片建不出来（原生 UI 节点名对不上、某帧被
+    // 抢走等），`handlers` 永远不置位 —— 面板显示出来但**点 × 关不掉**，因为
+    // 那个按钮从来没绑过事件。用户实测踩到的就是这个（面板空白 + × 无反应）。
+    // 关闭按钮在第一帧就已经存在（header 刚建好），所以这里立刻绑，不等卡片。
     let close_path = format!("{shell}.header.close");
     if !st.lock().unwrap().handlers && ctx.ui_exists(&close_path) {
         po_bind(ctx, st, &close_path, true);
         st.lock().unwrap().handlers = true;
     }
+    // 16 张卡各自是一棵子树。每帧只建 3 棵（一整帧建 16 棵会让画面卡一下），
+    // 用 `rows` 记录建到第几张。
+    //
+    // ⚠️ 这里有两个必须自愈的状态，否则面板会「显示出来但一片空白」：
+    //   ① `rows` 只在离开游戏界面时才归零，一旦推进到 16 就再也不会重建；
+    //      若中途某棵树其实没落地（spawn 失败被跳过、或引擎在重新加载 UI 时
+    //      把节点丢了），`po_redraw` 之后对这些不存在的路径 `ui_set_text` 全部
+    //      静默失败 —— 用户看到的就是空面板。
+    //   ② 旧代码在任一棵建不出来时直接 `return`，`rows` 不再推进，于是
+    //      「建完才绑」的关闭按钮永远绑不上 —— 这就是「点 × 关不掉」。
+    // 处理：先探测第 0 棵是否真的存在，不存在就把 `rows` 拉回 0 重建；
+    // 每帧只推进一批，且单棵失败不阻断后续。
+    let mut rows = st.lock().unwrap().rows;
+    if rows >= PO_ROWS && !ctx.ui_exists(&format!("{shell}.r0.team0.name")) {
+        rows = 0; // 标记过「建完了」但节点其实不在：从头重建
+        st.lock().unwrap().rows = 0;
+    }
+    if rows < PO_ROWS {
+        let end = (rows + 3).min(PO_ROWS);
+        for slot in rows..end {
+            // 失败不回退 rows 以外的状态：这一棵下一轮还会被探测重建。
+            let _ = po_spawn_tree(ctx, &shell, &po_row_src(slot));
+        }
+        st.lock().unwrap().rows = end;
+    }
     let open = st.lock().unwrap().open;
     ctx.ui_set_visible(PO_UI_PATH, open);
+    // 面板自检：把「节点到底建出来没有」写进存档，反馈者发存档即可定位。
+    // 只在面板打开时跑，且内容没变就不写（避免标脏）。
+    if open {
+        let shell2 = format!("{PO_UI_PATH}.panel");
+        let diag = format!(
+            "root={} shell={} header={} r0={} r0name={} close={} rows={} total={} cards={}",
+            ctx.ui_exists(PO_UI_PATH) as u8,
+            ctx.ui_exists(&shell2) as u8,
+            ctx.ui_exists(&format!("{shell2}.header")) as u8,
+            ctx.ui_exists(&format!("{shell2}.r0")) as u8,
+            ctx.ui_exists(&format!("{shell2}.r0.team0.name")) as u8,
+            ctx.ui_exists(&format!("{shell2}.header.close")) as u8,
+            st.lock().unwrap().rows,
+            PO_ROWS,
+            ctx.save_get_string(PO_BOARD_KEY)
+                .map(|b| b.lines().skip(1).count())
+                .unwrap_or(0),
+        );
+        if ctx.save_get_string("kpl_diag_po").as_deref() != Some(diag.as_str()) {
+            ctx.save_set_string("kpl_diag_po", &diag);
+        }
+    }
+    rows0
 }
 
 // -- 单节点 spawn（host 拒绝一次声明多个节点的 source） --
