@@ -1641,10 +1641,17 @@ fn seed_table_ok(w: usize, off: usize) -> Option<usize> {
     let mut live = 0usize;
     for e in 0..len as usize {
         let b = ptr as usize + e * SEED_ENTRY_SIZE;
-        // +0x50 是赛事类型（单字节；引擎自己也是 `cmp byte ptr [..+0x50]`）：
-        // 0/1 = Masters/Champions、2 = 东区、3 = 西区。
+        // +0x50 是赛事类型（单字节；引擎自己也是 `cmp byte ptr [..+0x50]`）。
+        //
+        // ⚠️ 只当「合理性上限」用，不假设枚举从 0 还是从 1 起：
+        // 建表方在 0.6.5 上是 `lea rcx,[rdx-1]; cmp rcx,3` —— 即**入参** rdx 落
+        // 1..=4，但落盘的是 rdx 还是 rdx-1 没能从二进制里确证。旧版写死 `> 3`
+        // 就等于赌「从 0 起」：一旦引擎存的是 1..=4，第四类赛事（西区）会让整张
+        // 表被判成无效 ⇒ 修正永久静默失效。放宽到 8 仍然远小于随机内存的命中率，
+        // 而正确性本来就不依赖这个数字（归一化按年份 + 槽位判定，见
+        // `maybe_fix_cup_allocation`）。
         let ty = seedscan::rdu8(b + 0x50)?;
-        if ty > 3 {
+        if ty > 8 {
             return None;
         }
         let mut slots_live = 0u32;
@@ -1678,11 +1685,22 @@ fn locate_seed_table(s: usize) -> Option<(usize, usize)> {
             }
         }
     }
-    // 找不到就退避：前 4 次照找（进服时状态还没铺开，早失败很正常），
-    // 之后每 64 次才重试，避免每个 tick 白扫 130 个候选。
+    // 找不到就退避，避免每个 tick 白扫 130 个候选。
+    //
+    // ⚠️ 旧版是「前 4 次照找，之后每 64 次才重试」。`SEED_TRIES` 只统计**失败**
+    // 次数，而 tick 是按天推进的 —— 一旦前 4 次（开服读档时种子表往往还没建）
+    // 就耗尽，接下来每 64 个 tick 才重试一次 = **64 天的盲区**。国际杯抽签在
+    // 5/4 / 10/19，表要是此后才出现，整个 season 的 cap 归一化都不会执行
+    // （而且 `on_server_start` 也不重置这个计数，同进程换存档继续带着旧值）。
+    // 现在改成指数退避：1、2、4、8…直到封顶 32，命中后清零。最坏情况也只需要
+    // 32 个 tick（一个月）就能恢复，而不是 64。
     let n = SEED_TRIES.fetch_add(1, Ordering::Relaxed);
-    if n >= 4 && n % 64 != 0 {
-        return None;
+    if n >= 4 {
+        let cap = 32usize;
+        let backoff = (1usize << (n - 4).min(5)).min(cap);
+        if n % backoff != 0 {
+            return None;
+        }
     }
     let mut cands: Vec<usize> = vec![s];
     for off in (0..0x400).step_by(8) {
@@ -1695,12 +1713,22 @@ fn locate_seed_table(s: usize) -> Option<(usize, usize)> {
     for &w in cands.iter().take(130) {
         for &off in SEED_OFFS {
             if seed_table_ok(w, off).is_some() {
+                // 命中了就把失败计数清零：下次真失效能立刻重新退避。
                 WORLD_ADDR.store(w, Ordering::Relaxed);
+                SEED_TRIES.store(0, Ordering::Relaxed);
                 return Some((w, off));
             }
         }
     }
     None
+}
+
+/// 读档 / 换存档时作废定位状态：`WORLD_ADDR` 属于上一份存档的堆，留着只会
+/// 让新的这份先做一轮注定失败的校验；`SEED_TRIES` 不清零则会把上一份存档的
+/// 退避进度带过来（旧版就是漏了这一步）。
+fn seed_locate_reset() {
+    WORLD_ADDR.store(0, Ordering::Relaxed);
+    SEED_TRIES.store(0, Ordering::Relaxed);
 }
 
 /// 5/4「Challengers E」抽签池：`0x1416db2d2` 里用 `[tournament+0x68]` 选 vec，
@@ -1717,47 +1745,72 @@ fn locate_seed_table(s: usize) -> Option<(usize, usize)> {
 ///     的条目也要收回（region 2 不在这项的赛区列表里，会被整条跳过）→ 并到 0/1；
 ///   - vec2（Challengers W，region 2/3/4）：只处理 region 5（正常不会出现）。
 /// 每个赛区最多取 10 名（comp 0/1/2/3/4 的 1..10 名都实测可取）。
-fn maybe_fix_cup_allocation(ctx: &StableServerCtx<'_>) {
+fn maybe_fix_cup_allocation(ctx: &mut StableServerCtx<'_>) {
+    // 诊断摘要（写进 mod 存档命名空间，反馈者把存档发来就能看到实际状态）。
+    // 只在内容变化时才写，避免每 tick 把存档标脏。
+    let mut diag = String::new();
     let (w, off) = match locate_seed_table(ctx.raw_state() as usize) {
         Some(v) => v,
-        None => return,
+        None => {
+            diag.push_str("locate=none");
+            report_seed_diag(ctx, &diag);
+            return;
+        }
     };
     let (Some(ptr), Some(len)) = (
         seedscan::rdu64(w + off),
         seedscan::rdu64(w + off + 8),
     ) else {
+        diag.push_str(&format!("locate=0x{:x}+0x{:x} hdr=unreadable", w, off));
+        report_seed_diag(ctx, &diag);
         return;
     };
     if len == 0 || len > 64 || ptr < 0x10000 {
+        diag.push_str(&format!(
+            "locate=0x{:x}+0x{:x} len={} ptr=0x{:x} bad",
+            w, off, len, ptr
+        ));
+        report_seed_diag(ctx, &diag);
         return;
     }
-    // 只改「最新年份」的条目。
+    diag.push_str(&format!("off=0x{:x} len={}", off, len));
+    // 年份：从**条目内部**取（+0x48，结构体自身布局，不随 world 挪动）。
     //
     // 旧版读的是 world 里的「当前年份」字段（world+0x17a40），那个字段在
     // 2026-10-21 的更新里挪到了 0x18010 —— 偏移一错，年份就永远匹配不上，
-    // 整段静默失效，抽签池随之退化并崩溃（这正是 0.6.5 / 新版上复发的根因）。
-    // 现在改成从**条目内部**取年份（+0x48，结构体自身布局，不随 world 挪动），
-    // 取全表最大值当「当前赛季」—— 语义和引擎一致，但不再依赖任何 world 偏移。
-    let mut newest = 0u64;
+    // 整段静默失效，抽签池随之退化并崩溃。
+    //
+    // ⚠️ 但**不能只改「最新年份」那一条**：建表方是 append（0.6.5 上
+    // `mov [rcx+rdx+0x50], r8; inc rsi; mov [r9+0x16808], rsi`），若引擎提前
+    // 备好了下一赛季的条目，全表最大值就指向**明年的空表**，归一化会被写到
+    // 错的那条上，今年这份反而一份不动。所以：只改「申请了队伍」的条目 ——
+    // 空表本来就没什么可归一的，真正要修的那些一定有队伍。
     for e in 0..len as usize {
         let base = ptr as usize + e * SEED_ENTRY_SIZE;
-        if let Some(y) = seedscan::rdu64(base + 0x48) {
-            // 年份是打包的（引擎自己 `sar 0xd`），这里只比大小，不解释具体值。
-            newest = newest.max(y);
-        }
-    }
-    for e in 0..len as usize {
-        let base = ptr as usize + e * SEED_ENTRY_SIZE;
-        if seedscan::rdu64(base + 0x48) != Some(newest) {
-            continue;
-        }
-        // +0x50 是赛事类型（单字节）；0/1=Masters/Champions、2=东区、3=西区。
+        // +0x50 是赛事类型（单字节）。只做合理性上限，不赌枚举起点（见
+        // `seed_table_ok` 里的说明）。
         let Some(ty) = seedscan::rdu8(base + 0x50) else {
             continue;
         };
-        if ty > 3 {
+        if ty > 8 {
             continue;
         }
+        // 三条都空 = 还没排队的条目，跳过。
+        let has_slots = [(0x08usize, 0x10usize), (0x20, 0x28), (0x38, 0x40)]
+            .iter()
+            .any(|&(po, lo)| {
+                seedscan::rdu64(base + lo).unwrap_or(0) > 0
+                    && seedscan::rdu64(base + po).unwrap_or(0) >= 0x10000
+            });
+        if !has_slots {
+            continue;
+        }
+        diag.push_str(&format!(
+            " e{}:ty={},y=0x{:x}",
+            e,
+            ty,
+            seedscan::rdu64(base + 0x48).unwrap_or(0)
+        ));
         for (vi, (poff, loff)) in [(0x08usize, 0x10usize), (0x20, 0x28), (0x38, 0x40)]
             .iter()
             .enumerate()
@@ -1829,8 +1882,28 @@ fn maybe_fix_cup_allocation(ctx: &StableServerCtx<'_>) {
                 unsafe { core::ptr::write_volatile((ta + 8) as *mut u64, tc + add) };
                 left -= add;
             }
+            diag.push_str(&format!(" v{}={}/{}", vi, total, kept));
         }
     }
+    report_seed_diag(ctx, &diag);
+}
+
+/// 把种子表诊断写进 mod 存档命名空间（`kpl_diag_seed`）。
+///
+/// 只在内容变化时写 —— 这段每 tick 都会跑，无条件写会把存档一直标脏。
+/// 反馈者把 `.data` 存档发来时，解压后能直接 grep 到这个键，看到：
+/// 定位到哪个偏移、表里有几条、每条的类型/年份、以及每个 vec 归一前的
+/// 原始总名额和归一后保留的名额。这样「修法到底有没有生效」就不用猜了。
+fn report_seed_diag(ctx: &mut StableServerCtx<'_>, diag: &str) {
+    if diag.is_empty() {
+        return;
+    }
+    let mut s = diag.to_string();
+    s.truncate(400); // 存档值是短字符串，别撑爆
+    if ctx.save_get_string("kpl_diag_seed").as_deref() == Some(s.as_str()) {
+        return;
+    }
+    ctx.save_set_string("kpl_diag_seed", &s);
 }
 
 // ======================== 杯赛席位替换（挂名队 / 重复队 -> 真队） ========================
@@ -4710,6 +4783,9 @@ impl StableServerExtension for KplNaming {
         // 下面的初始化会被跳过，但缓存里的 Match id 已经属于上一份存档了。
         played_cache_reset();
         cache_clear();
+        // 同进程换存档时 `WORLD_ADDR` 还指着上一份存档的堆、`SEED_TRIES` 还带着
+        // 上一份的退避进度 —— 种子表定位状态必须跟着存档一起作废。
+        seed_locate_reset();
         if START_DONE.swap(true, Ordering::SeqCst) {
             return;
         }
@@ -5924,6 +6000,28 @@ mod tests {
                 .unwrap_or_else(|| panic!("偏移 0x{:x} 上应认得出", off));
             assert_eq!(live, 3, "偏移 0x{:x}: 三条记录都申请了队伍", off);
         }
+    }
+
+    /// 类型字节放宽到 1..=8 之后，1..=4（引擎建表方的真实入参范围）必须全认；
+    /// 只有明显越界的值才判无效。旧版写死 `ty <= 3`，若引擎存的是 1..=4，
+    /// 第四类赛事（西区）会让整张表被否掉 —— 修正永久静默失效。
+    #[test]
+    fn seed_table_accepts_every_engine_tournament_type() {
+        static G0: &[(u64, u64)] = &[(0, 4), (1, 4)];
+        static G1: &[(u64, u64)] = &[(2, 3), (3, 3)];
+        for ty in 1u64..=4 {
+            let rows: [(u64, [&[(u64, u64)]; 3]); 1] = [(ty, [G0, G1, &[]])];
+            let t = FakeSeedTable::new(&rows, SEED_OFFS[1]);
+            assert!(
+                seed_table_ok(t.base(), SEED_OFFS[1]).is_some(),
+                "类型 {} 必须认得出",
+                ty
+            );
+        }
+        // 9 以上仍然拒绝（随机内存防线）。
+        let rows: [(u64, [&[(u64, u64)]; 3]); 1] = [(9, [G0, &[], &[]])];
+        let t = FakeSeedTable::new(&rows, SEED_OFFS[1]);
+        assert_eq!(seed_table_ok(t.base(), SEED_OFFS[1]), None, "越界类型应拒绝");
     }
 
     #[test]
