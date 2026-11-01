@@ -1132,10 +1132,11 @@ fn set_need_win(ctx: &mut StableServerCtx<'_>, mid: usize, want: &str) {
 // ============================ SAB 分组 ============================
 // 真实 KPL SAB：不抽签、按强弱分组。**分组靠 data_setting 顺序**——把 TACC 的
 // 18 队按实力（资金）排好，引擎会自动按顺序拆成 3 个 competition（各 6 队）=
-// S/A/B 三组。Rust 侧只做三件安全的事：
+// S/A/B 三组。Rust 侧只做两件安全的事：
 //   1. set_bo 设常规赛 BO5、季后赛 BO7（改 need_win，已验证安全）；
-//   2. record_last_season 把上赛季 finalized 三组 standings 按名次存进存档；
-//   3. dump_sab 把当前分组/名次写到桌面。
+//   2. dump_sab 把当前分组/名次写到桌面。
+// （旧的 `record_last_season` 已删除：它写的 `last_season_rank` 键全代码无人读取，
+//   真正的分组依据是 `rr_rank_{tag}_{round}`，见 maybe_reset_rounds。）
 // ⚠️ 绝不重写 Match 的 team1/team2 或 competition 的 standings —— 会把引擎的
 //    team→competition 索引搞坏、直接卡死（2026-10-12 踩过坑）。
 
@@ -1284,11 +1285,6 @@ fn cn_d1_competitions(ctx: &StableServerCtx<'_>) -> Vec<usize> {
     cn_d1_comps(ctx, false)
 }
 
-/// 上赛季（已 finalized）的 CN KPL competition id，按 id 升序（= S/A/B 顺序）。
-fn cn_d1_finalized_competitions(ctx: &StableServerCtx<'_>) -> Vec<usize> {
-    cn_d1_comps(ctx, true)
-}
-
 /// 单循环：把 LeagueCompetition 的 matches 从双循环砍成单循环（前 N*(N-1)/2 场）。
 /// 10 队联赛双循环 90 场 → 45 场（9 轮）。
 /// 幂等：只在 matches 仍长于单循环时砍，否则跳过。旧版是「每次砍半」，
@@ -1416,41 +1412,6 @@ fn comp_league_name(ctx: &StableServerCtx<'_>, cid: usize) -> Option<String> {
     let got = m.get(&cid).cloned().flatten();
     lock_tick().comp_league_map = Some(m);
     got
-}
-
-/// 把上赛季（finalized 的 CN D1 competition）最终名次存到 mod 存档命名空间，
-/// 供下赛季分组用。名次 = S组排序 + A组排序 + B组排序（competition id 升序 = S/A/B）。
-fn record_last_season(ctx: &mut StableServerCtx<'_>) {
-    let final_comps = cn_d1_finalized_competitions(ctx);
-    if final_comps.is_empty() {
-        return;
-    }
-    let mut ranked: Vec<usize> = Vec::new();
-    for &cid in &final_comps {
-        let json = ctx
-            .record_get_json(RecordKindV1::LeagueCompetition, cid, "standings")
-            .unwrap_or_default();
-        let mut rows = parse_standings(&json);
-        rows.sort_by(|x, y| {
-            y.win
-                .cmp(&x.win)
-                .then((y.set_win - y.set_lose).cmp(&(x.set_win - x.set_lose)))
-                .then(y.set_win.cmp(&x.set_win))
-                .then(x.team.cmp(&y.team))
-        });
-        for r in rows {
-            ranked.push(r.team);
-        }
-    }
-    if ranked.is_empty() {
-        return;
-    }
-    let s = ranked
-        .iter()
-        .map(|t| t.to_string())
-        .collect::<Vec<_>>()
-        .join(",");
-    ctx.save_set_string("last_season_rank", &s);
 }
 
 fn team_name(ctx: &StableServerCtx<'_>, tid: usize) -> String {
@@ -2707,8 +2668,15 @@ fn maybe_playoffs(ctx: &mut StableServerCtx<'_>) {
     };
     let sk = format!("po_s_{}", tag);
     let ak = format!("po_a_{}", tag);
+    // ⚠️ 快照读出来必须校验：旧版本按「只看胜场」排过名次，已把 0-0 挂名队
+    // 排进前 6（实测 S 组 #6-#9 全是挂名队）并把这份脏名次写进了存档。
+    // 如果照旧复用，新的排序修法永远不会生效 —— 又是一次「修法自失效」。
+    // 所以：快照里前 6 含挂名队就判定为脏，作废重建。
+    let snapshot_ok = |ids: &[usize]| {
+        ids.len() >= 6 && !ids[..6].iter().any(|t| is_filler_team(&team_name(ctx, *t)))
+    };
     let snapshot = match (save_id_list(ctx, &sk), save_id_list(ctx, &ak)) {
-        (Some(s), Some(a)) if s.len() >= 6 && a.len() >= 6 => (s, a),
+        (Some(s), Some(a)) if snapshot_ok(&s) && snapshot_ok(&a) => (s, a),
         _ => {
             let s: Vec<usize> = standings_ranked(ctx, c.s).iter().map(|r| r.team).collect();
             let a: Vec<usize> = standings_ranked(ctx, c.a).iter().map(|r| r.team).collect();
@@ -3023,20 +2991,43 @@ fn rr_played(ctx: &StableServerCtx<'_>, mids: &[usize]) -> usize {
     mids.iter().filter(|m| is_played(ctx, **m)).count()
 }
 
-/// standings 按名次排序（胜场 → set 差 → set 胜 → team id）。
+/// standings 按名次排序（真队优先 → 胜场 → set 差 → set 胜 → team id）。
+///
+/// ⚠️ 「真队优先」这一档不是可选的。CN 每个容器里 10 行有 4 行是 0-0 的挂名队
+/// （DSM/YTG/SDG/HZ…），它们一场没打却和打完 5 场的真队同表比较。只按胜场排的话，
+/// 一支 0-5 的真队会被 4 支 0-0 挂名队挤到第 10 名，而 `po_plan` 取前 6 名进
+/// 季后赛 —— 于是挂名队直接占掉第 6 名以后的席位，混进淘汰赛。
+/// （2026-11-01 实测：S 组 #5 Hero 2-3、#6-#9 全是 0-0 挂名、#10 DRG 0-5。）
+///
+/// 判定用名单白名单（`is_filler_team`），不看战绩：真队哪怕 0-5 也排在挂名队前面。
 fn standings_ranked(ctx: &StableServerCtx<'_>, cid: usize) -> Vec<StandRow> {
     let json = ctx
         .record_get_json(RecordKindV1::LeagueCompetition, cid, "standings")
         .unwrap_or_default();
     let mut rows = parse_standings(&json);
+    let filler: HashMap<usize, bool> = rows
+        .iter()
+        .map(|r| (r.team, is_filler_team(&team_name(ctx, r.team))))
+        .collect();
+    rank_rows(&mut rows, &filler);
+    rows
+}
+
+/// `standings_ranked` 的排序本体，抽成纯函数以便单测（不碰 ctx）。
+///
+/// 排序键：真队优先 → 胜场 → set 差 → set 胜 → team id。
+/// ⚠️ 「真队优先」这一档不是可选的，理由见 `standings_ranked` 的文档注释。
+fn rank_rows(rows: &mut [StandRow], filler: &HashMap<usize, bool>) {
     rows.sort_by(|x, y| {
-        y.win
-            .cmp(&x.win)
+        let fx = filler.get(&x.team).copied().unwrap_or(false);
+        let fy = filler.get(&y.team).copied().unwrap_or(false);
+        // false(真队) 排前面
+        fx.cmp(&fy)
+            .then(y.win.cmp(&x.win))
             .then((y.set_win - y.set_lose).cmp(&(x.set_win - x.set_lose)))
             .then(y.set_win.cmp(&x.set_win))
             .then(x.team.cmp(&y.team))
     });
-    rows
 }
 
 /// 把这个 competition 的 standings 全部清零（保留原 key 集合 = 不动参赛队）。
@@ -4770,7 +4761,6 @@ fn maybe_sab_seed(ctx: &mut StableServerCtx<'_>) {
     if ctx.save_get_string("sab_seed_type").as_deref() == Some(ty.as_str()) {
         return;
     }
-    record_last_season(ctx);
     // 第一轮分组的新闻改由 maybe_draw_groups 用「一组/二组/三组」推送。
     ctx.save_set_string("sab_seed_type", &ty);
 }
@@ -6235,5 +6225,57 @@ mod tests {
         // 隔开足够久 = 用户真的又点了一次。
         assert!(po_press_is_new(100, 100 + PO_PRESS_FRAMES));
         assert!(po_press_is_new(100, 400));
+    }
+
+    /// 挂名队不许靠「0 胜」混进前 6（2026-11-01 实测的脏数据当夹具）。
+    ///
+    /// 真实 S 组那一份：Hero 2-3、DRG 0-5 是真队，中间 4 支 0-0 是挂名队。
+    /// 旧代码只按胜场排，0-0 挂名队的场次差是 0，压过 0-5 的 DRG，
+    /// 于是 `po_plan` 的 `s[0..6]` 里塞进了 4 支挂名队。
+    #[test]
+    fn filler_teams_never_outrank_real_teams() {
+        let real = |team, win, lose, sw, sl| StandRow {
+            team,
+            win,
+            lose,
+            set_win: sw,
+            set_lose: sl,
+        };
+        let mut rows = vec![
+            real(70, 5, 0, 15, 1),   // AG 5-0
+            real(50, 3, 2, 11, 6),   // TTG 3-2
+            real(53, 3, 2, 10, 12),  // WB 3-2
+            real(51, 2, 3, 8, 11),   // 狼队 2-3
+            real(11, 2, 3, 8, 13),   // Hero 2-3
+            real(72, 0, 5, 6, 15),   // DRG 0-5 ← 旧代码把它挤到第 10
+            real(18, 0, 0, 0, 0),    // DSM 挂名
+            real(59, 0, 0, 0, 0),    // YTG 挂名
+            real(77, 0, 0, 0, 0),    // SDG 挂名
+            real(78, 0, 0, 0, 0),    // HZ 挂名
+        ];
+        let filler: HashMap<usize, bool> = [
+            (18, true),
+            (59, true),
+            (77, true),
+            (78, true),
+        ]
+        .into_iter()
+        .collect();
+
+        rank_rows(&mut rows, &filler);
+
+        // 前 6 名必须全是真队 —— 这是 `po_plan` 取季后赛席位的范围。
+        let top6: Vec<usize> = rows[..6].iter().map(|r| r.team).collect();
+        assert_eq!(
+            top6,
+            vec![70, 50, 53, 51, 11, 72],
+            "前 6 应为 AG/TTG/WB/狼队/Hero/DRG，实际 {top6:?}"
+        );
+        // 0-5 的 DRG 必须排在 4 支 0-0 挂名队前面。
+        let drg_pos = rows.iter().position(|r| r.team == 72).unwrap();
+        for f in [18, 59, 77, 78] {
+            let p = rows.iter().position(|r| r.team == f).unwrap();
+            assert!(drg_pos < p, "0-5 真队 DRG 应排在 0-0 挂名队 team={f} 前面");
+        }
     }
 }
